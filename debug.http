@@ -1,0 +1,16 @@
+### Create Datasource
+
+POST http://localhost:8000/api/v1/
+Content-Type: application/json
+
+{
+  "Id": "datasource-crud-test",
+  "Name": "Datasource CRUD Test"
+}
+### Get Datasource
+
+GET http://localhost:8000/api/v1/datasource-crud-test
+
+### Delete Datasource
+
+DELETE http://localhost:8000/api/v1/datasource-crud-test

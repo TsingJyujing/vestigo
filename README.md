@@ -1,2 +1,11 @@
-# vestigo
-a personal search engine
+# Vestigo
+
+## ZH-CN
+
+Vestigo是一个个人搜索引擎核心部分，用于存储和索引数据。
+
+索引的方式包括：
+
+- 常规索引：例如BM25或者TF-IDF
+- 向量索引：使用用最近邻搜索
+

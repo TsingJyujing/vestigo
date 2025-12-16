@@ -1,0 +1,10 @@
+version: "2"
+sql:
+  - engine: "sqlite"
+    queries:
+      - "controller/sqlc/query.sql"
+    schema: "controller/sqlc/schema.sql"
+    gen:
+      go:
+        package: "dao"
+        out: "controller/dao"
