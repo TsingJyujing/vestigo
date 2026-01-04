@@ -31,6 +31,13 @@ func New(db dao.Queries) *Controller {
 	return &Controller{db: db}
 }
 
+// Close closes all resources held by the controller
+func (c *Controller) Close() error {
+	// TODO close search indexes
+	logger.Info("Controller resources closed successfully")
+	return nil
+}
+
 // handleSQLError return http response by error return from sql
 func handleSQLError(echoCtx echo.Context, err error) error {
 	if err.Error() == RowNotFoundMessage {

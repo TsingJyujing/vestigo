@@ -27,3 +27,4 @@ go.work.sum
 db.sqlite
 /.idea
 /build
+/dev
