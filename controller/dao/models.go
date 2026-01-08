@@ -26,7 +26,12 @@ type TextChunk struct {
 	ID         string
 	DocumentID string
 	Content    string
+	SegContent string
 	CreatedAt  int64
+}
+
+type TextChunkFt struct {
+	SegContent string
 }
 
 type TextEmbedding struct {

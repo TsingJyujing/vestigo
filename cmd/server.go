@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"net/http"
 	"os"
 	"os/signal"
@@ -15,7 +16,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/tsingjyujing/vestigo/controller"
-	"github.com/tsingjyujing/vestigo/controller/dao"
 	_ "modernc.org/sqlite"
 )
 
@@ -55,6 +55,8 @@ var serverCommand = &cobra.Command{
 		echoServer := echo.New()
 		goCtx := cmd.Context()
 		config := readConfig()
+
+		// Create controller
 		db, err := sql.Open("sqlite", config.GetString("server.db"))
 		if err != nil {
 			logger.WithError(err).Fatal("Failed to open database")
@@ -63,14 +65,18 @@ var serverCommand = &cobra.Command{
 		if _, err := db.ExecContext(goCtx, controller.GetDDL()); err != nil {
 			logger.WithError(err).Fatal("Failed to create tables")
 		}
-		c := controller.New(*dao.New(db))
+		c, err := controller.NewController(db)
+		if err != nil {
+			logger.WithError(err).Fatal("Failed to create controller")
+		}
+
 		echoServer.Use(echoprometheus.NewMiddleware("resman"))
 		// Set routes
 		echoServer.GET("/metrics", echoprometheus.NewHandler())
 		echoServer.GET("/health", func(c echo.Context) error {
 			return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
 		})
-		// RESTful
+		// RESTful API routes
 		apiGroup := echoServer.Group("/api/v1")
 
 		datasourceGroup := apiGroup.Group("/datasource")
@@ -93,7 +99,7 @@ var serverCommand = &cobra.Command{
 		go func() {
 			addr := config.GetString("server.addr")
 			logger.Infof("Starting server on %s", addr)
-			if err := echoServer.Start(addr); err != nil && err != http.ErrServerClosed {
+			if err := echoServer.Start(addr); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				logger.WithError(err).Fatal("Failed to start server")
 			}
 		}()
@@ -112,10 +118,6 @@ var serverCommand = &cobra.Command{
 		// Shutdown Echo server
 		if err := echoServer.Shutdown(ctx); err != nil {
 			logger.WithError(err).Error("Failed to shutdown server gracefully")
-		}
-		// Close database connection
-		if err := db.Close(); err != nil {
-			logger.WithError(err).Error("Failed to close database")
 		}
 		// Close store if it exists in controller
 		if err := c.Close(); err != nil {

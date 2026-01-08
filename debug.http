@@ -1,15 +1,35 @@
+### Check Server Status
+
+GET http://localhost:8000/health
+
 ### Create Datasource
 
-POST http://localhost:8000/api/v1/
+POST http://localhost:8000/api/v1/datasource/
 Content-Type: application/json
 
 {
   "Id": "datasource-crud-test",
   "Name": "Datasource CRUD Test"
 }
+
 ### Get Datasource
 
-GET http://localhost:8000/api/v1/datasource-crud-test
+GET http://localhost:8000/api/v1/datasource/datasource-crud-test
+
+### Create New Document
+
+POST http://localhost:8000/api/v1/datasource/datasource-crud-test/doc
+Content-Type: application/json
+
+{
+  "Id": "doc-crud-test-20260107-001711",
+  "Title": "Test Title",
+  "texts": [
+    "山达尔星联邦共和国联邦政府是一个强大的政治实体",
+    "它由多个星球组成，共同致力于维护和平与繁荣"
+  ]
+}
+
 
 ### Delete Datasource
 

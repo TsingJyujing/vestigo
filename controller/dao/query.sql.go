@@ -78,7 +78,7 @@ func (q *Queries) GetDocument(ctx context.Context, id string) (Document, error) 
 }
 
 const getTextChunk = `-- name: GetTextChunk :one
-SELECT id, document_id, content, created_at
+SELECT id, document_id, content, seg_content, created_at
 FROM text_chunk
 WHERE id = ?
 LIMIT 1
@@ -91,6 +91,7 @@ func (q *Queries) GetTextChunk(ctx context.Context, id string) (TextChunk, error
 		&i.ID,
 		&i.DocumentID,
 		&i.Content,
+		&i.SegContent,
 		&i.CreatedAt,
 	)
 	return i, err
@@ -125,7 +126,7 @@ func (q *Queries) ListDatasources(ctx context.Context) ([]Datasource, error) {
 }
 
 const listTextChunksByDocumentID = `-- name: ListTextChunksByDocumentID :many
-SELECT id, document_id, content, created_at
+SELECT id, document_id, content, seg_content, created_at
 FROM text_chunk
 WHERE document_id = ?
 `
@@ -143,6 +144,7 @@ func (q *Queries) ListTextChunksByDocumentID(ctx context.Context, documentID str
 			&i.ID,
 			&i.DocumentID,
 			&i.Content,
+			&i.SegContent,
 			&i.CreatedAt,
 		); err != nil {
 			return nil, err
@@ -176,10 +178,9 @@ func (q *Queries) NewDatasource(ctx context.Context, arg NewDatasourceParams) (D
 	return i, err
 }
 
-const newDocument = `-- name: NewDocument :one
+const newDocument = `-- name: NewDocument :exec
 INSERT INTO document (id, datasource_id, title, description)
 VALUES (?, ?, ?, ?)
-RETURNING id, datasource_id, title, description, created_at
 `
 
 type NewDocumentParams struct {
@@ -189,43 +190,42 @@ type NewDocumentParams struct {
 	Description  sql.NullString
 }
 
-func (q *Queries) NewDocument(ctx context.Context, arg NewDocumentParams) (Document, error) {
-	row := q.db.QueryRowContext(ctx, newDocument,
+func (q *Queries) NewDocument(ctx context.Context, arg NewDocumentParams) error {
+	_, err := q.db.ExecContext(ctx, newDocument,
 		arg.ID,
 		arg.DatasourceID,
 		arg.Title,
 		arg.Description,
 	)
-	var i Document
-	err := row.Scan(
-		&i.ID,
-		&i.DatasourceID,
-		&i.Title,
-		&i.Description,
-		&i.CreatedAt,
-	)
-	return i, err
+	return err
 }
 
 const newTextChunk = `-- name: NewTextChunk :one
-INSERT INTO text_chunk (id, document_id, content)
-VALUES (?, ?, ?)
-RETURNING id, document_id, content, created_at
+INSERT INTO text_chunk (id, document_id, content, seg_content)
+VALUES (?, ?, ?, ?)
+RETURNING id, document_id, content, seg_content, created_at
 `
 
 type NewTextChunkParams struct {
 	ID         string
 	DocumentID string
 	Content    string
+	SegContent string
 }
 
 func (q *Queries) NewTextChunk(ctx context.Context, arg NewTextChunkParams) (TextChunk, error) {
-	row := q.db.QueryRowContext(ctx, newTextChunk, arg.ID, arg.DocumentID, arg.Content)
+	row := q.db.QueryRowContext(ctx, newTextChunk,
+		arg.ID,
+		arg.DocumentID,
+		arg.Content,
+		arg.SegContent,
+	)
 	var i TextChunk
 	err := row.Scan(
 		&i.ID,
 		&i.DocumentID,
 		&i.Content,
+		&i.SegContent,
 		&i.CreatedAt,
 	)
 	return i, err

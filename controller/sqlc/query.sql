@@ -23,10 +23,9 @@ DELETE
 FROM document
 WHERE id = ?;
 
--- name: NewDocument :one
+-- name: NewDocument :exec
 INSERT INTO document (id, datasource_id, title, description)
-VALUES (?, ?, ?, ?)
-RETURNING *;
+VALUES (?, ?, ?, ?);
 
 -- name: GetDocument :one
 SELECT *
@@ -35,8 +34,8 @@ WHERE id = ?
 LIMIT 1;
 
 -- name: NewTextChunk :one
-INSERT INTO text_chunk (id, document_id, content)
-VALUES (?, ?, ?)
+INSERT INTO text_chunk (id, document_id, content, seg_content)
+VALUES (?, ?, ?, ?)
 RETURNING *;
 
 -- name: ListTextChunksByDocumentID :many
