@@ -107,33 +107,35 @@ var serverCommand = &cobra.Command{
 		searchGroup.GET("/simple", c.SimpleSearch)
 
 		// Start server in a goroutine
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+
 		go func() {
 			addr := config.GetString("server.addr")
 			logger.Infof("Starting server on %s", addr)
 			if err := echoServer.Start(addr); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				logger.WithError(err).Fatal("Failed to start server")
+				logger.WithError(err).Error("Server start error")
 			}
 		}()
 
-		// Setup graceful shutdown
-		quit := make(chan os.Signal, 1)
-		signal.Notify(quit, syscall.SIGTERM, syscall.SIGINT)
-		receivedSignal := <-quit // Block until a signal is received
-
-		logger.WithField("signal", receivedSignal.String()).Info("Shutting down server gracefully...")
+		// Wait for interrupt signal to gracefully shutdown the server with a timeout
+		<-ctx.Done()
+		stop()
+		logger.Info("Shutting down server gracefully, press Ctrl+C again to force")
 
 		// Graceful shutdown with timeout
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second) // TODO make the time configurable
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		// Shutdown Echo server
-		if err := echoServer.Shutdown(ctx); err != nil {
-			logger.WithError(err).Error("Failed to shutdown server gracefully")
+		if err := echoServer.Shutdown(shutdownCtx); err != nil {
+			logger.WithError(err).Error("Server forced to shutdown")
 		}
-		// Close store if it exists in controller
+
+		// Close controller resources
 		if err := c.Close(); err != nil {
 			logger.WithError(err).Error("Failed to close controller")
 		}
+
 		logger.Info("Server stopped gracefully")
 	},
 }
