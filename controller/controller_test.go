@@ -143,6 +143,35 @@ func TestDocumentCRUDAndSearch(t *testing.T) {
 		}
 	})
 
+	// Step 2.5: Get documents with text chunks
+	t.Run("GetDocumentsWithChunks", func(t *testing.T) {
+		for _, doc := range documents {
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/doc/"+doc.ID+"?with_texts=true", nil)
+			rec := httptest.NewRecorder()
+			c := e.NewContext(req, rec)
+			c.SetParamNames("doc_id")
+			c.SetParamValues(doc.ID)
+
+			err := controller.GetDocument(c)
+			require.NoError(t, err)
+			assert.Equal(t, http.StatusOK, rec.Code)
+
+			// Verify the response contains expected data and text chunks
+			var response map[string]interface{}
+			err = json.Unmarshal(rec.Body.Bytes(), &response)
+			require.NoError(t, err)
+			assert.Equal(t, doc.ID, response["ID"])
+			assert.Equal(t, doc.Title, response["Title"])
+
+			// Verify text_chunks field exists and is not empty
+			textChunks, exists := response["texts"]
+			assert.True(t, exists, "texts field should exist")
+			chunksArray, ok := textChunks.([]interface{})
+			assert.True(t, ok, "texts should be an array")
+			assert.Equal(t, len(doc.Texts), len(chunksArray), "Should have same number of chunks as input texts")
+		}
+	})
+
 	// Step 3: Search documents
 	t.Run("SearchDocuments", func(t *testing.T) {
 		searchTests := []struct {

@@ -83,9 +83,17 @@ Content-Type: application/json
   ]
 }
 
-### Get Document
+### Get Document (without chunks)
 
 GET http://localhost:8000/api/v1/doc/doc-crud-test-20260110-001
+
+### Get Document with Text Chunks
+
+GET http://localhost:8000/api/v1/doc/doc-crud-test-20260110-001?with_texts=true
+
+### Get Document with Text Chunks (alternative parameter)
+
+GET http://localhost:8000/api/v1/doc/doc-crud-test-20260110-002?with_texts=1
 
 ### Delete Document
 

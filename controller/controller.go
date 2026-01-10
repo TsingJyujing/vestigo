@@ -112,7 +112,6 @@ func (c *Controller) NewDocument(echoCtx echo.Context) error {
 				}
 				dataJSON = string(jsonBytes)
 			}
-
 			err := dao.New(tx).NewDocument(ctx, dao.NewDocumentParams{
 				ID:          param.ID,
 				Title:       param.Title,
@@ -136,8 +135,13 @@ func (c *Controller) NewDocument(echoCtx echo.Context) error {
 	if err != nil {
 		return handleSQLError(echoCtx, err)
 	}
-	logger.WithField("inserted_text_chunks", insertCount).Info("Inserted text chunks for new document")
+	logger.WithField("inserted_text_chunks", insertCount).Debug("Inserted text chunks for new document")
 	return echoCtx.JSON(http.StatusCreated, map[string]string{"status": "ok"})
+}
+
+type DocumentWithChunks struct {
+	dao.Document
+	Texts []dao.TextChunk `json:"texts,omitempty"`
 }
 
 func (c *Controller) GetDocument(echoCtx echo.Context) error {
@@ -147,7 +151,25 @@ func (c *Controller) GetDocument(echoCtx echo.Context) error {
 	if err != nil {
 		return handleSQLError(echoCtx, err)
 	}
-	return echoCtx.JSON(http.StatusOK, doc) // TODO add all text chunks by config
+
+	// Check if with_chunks parameter is set
+	withChunks := echoCtx.QueryParam("with_texts")
+	if withChunks == "true" || withChunks == "1" {
+		// Fetch all text texts for this document
+		texts, err := c.queries.ListTextChunksByDocumentID(ctx, docId)
+		if err != nil {
+			return handleInternalError(echoCtx, err)
+		}
+
+		// Return document with chunks
+		response := DocumentWithChunks{
+			Document: doc,
+			Texts:    texts,
+		}
+		return echoCtx.JSON(http.StatusOK, response)
+	}
+	// Return document without chunks
+	return echoCtx.JSON(http.StatusOK, doc)
 }
 
 // DeleteDocument deletes a document and all related text chunks / embeddings
