@@ -2,29 +2,20 @@
 
 GET http://localhost:8000/health
 
-### Create Datasource
-
-POST http://localhost:8000/api/v1/datasource/
-Content-Type: application/json
-
-{
-  "Id": "datasource-crud-test",
-  "Name": "Datasource CRUD Test"
-}
-
-### Get Datasource
-
-GET http://localhost:8000/api/v1/datasource/datasource-crud-test
-
 ### Create New Document 1
 
-POST http://localhost:8000/api/v1/datasource/datasource-crud-test/doc
+POST http://localhost:8000/api/v1/doc/
 Content-Type: application/json
 
 {
-  "Id": "doc-crud-test-20260107-001711",
-  "Title": "山达尔星联邦介绍",
-  "Description": "关于山达尔星联邦共和国的基本信息",
+  "id": "doc-crud-test-20260110-001",
+  "title": "山达尔星联邦介绍",
+  "description": "关于山达尔星联邦共和国的基本信息",
+  "data": {
+    "author": "联邦档案馆",
+    "category": "政治",
+    "classification": "public"
+  },
   "texts": [
     "山达尔星联邦共和国联邦政府是一个强大的政治实体",
     "它由多个星球组成，共同致力于维护和平与繁荣"
@@ -33,13 +24,18 @@ Content-Type: application/json
 
 ### Create New Document 2
 
-POST http://localhost:8000/api/v1/datasource/datasource-crud-test/doc
+POST http://localhost:8000/api/v1/doc/
 Content-Type: application/json
 
 {
-  "Id": "doc-crud-test-20260107-001712",
-  "Title": "星际贸易协定",
-  "Description": "山达尔星与邻近星系的贸易关系",
+  "id": "doc-crud-test-20260110-002",
+  "title": "星际贸易协定",
+  "description": "山达尔星与邻近星系的贸易关系",
+  "data": {
+    "author": "贸易部",
+    "category": "经济",
+    "year": 2026
+  },
   "texts": [
     "星际贸易协定促进了各星球之间的经济交流",
     "山达尔星作为贸易中心，吸引了大量商业活动"
@@ -48,13 +44,18 @@ Content-Type: application/json
 
 ### Create New Document 3
 
-POST http://localhost:8000/api/v1/datasource/datasource-crud-test/doc
+POST http://localhost:8000/api/v1/doc/
 Content-Type: application/json
 
 {
-  "Id": "doc-crud-test-20260107-001713",
-  "Title": "联邦科技发展",
-  "Description": "山达尔星联邦的科技创新成就",
+  "id": "doc-crud-test-20260110-003",
+  "title": "联邦科技发展",
+  "description": "山达尔星联邦的科技创新成就",
+  "data": {
+    "author": "科技部",
+    "category": "科技",
+    "priority": "high"
+  },
   "texts": [
     "联邦政府大力投资科技研发项目",
     "先进的空间跳跃技术使得星际旅行更加便捷",
@@ -64,13 +65,17 @@ Content-Type: application/json
 
 ### Create New Document 4
 
-POST http://localhost:8000/api/v1/datasource/datasource-crud-test/doc
+POST http://localhost:8000/api/v1/doc/
 Content-Type: application/json
 
 {
-  "Id": "doc-crud-test-20260107-001714",
-  "Title": "和平维护机制",
-  "Description": "联邦如何维持星际和平",
+  "id": "doc-crud-test-20260110-004",
+  "title": "和平维护机制",
+  "description": "联邦如何维持星际和平",
+  "data": {
+    "author": "和平委员会",
+    "category": "安全"
+  },
   "texts": [
     "联邦建立了完善的和平维护机制",
     "各成员星球通过民主协商解决争端",
@@ -78,13 +83,30 @@ Content-Type: application/json
   ]
 }
 
-### Simple Search - 山达尔星
+### Get Document
 
-GET http://localhost:8000/api/v1/search/simple?q=山达尔星
+GET http://localhost:8000/api/v1/doc/doc-crud-test-20260110-001
 
-### Simple Search - 联邦政府
+### Delete Document
 
-GET http://localhost:8000/api/v1/search/simple?q=联邦政府
+DELETE http://localhost:8000/api/v1/doc/doc-crud-test-20260110-001
+
+### Add Text Chunk to Document
+
+POST http://localhost:8000/api/v1/doc/doc-crud-test-20260110-002/text
+Content-Type: application/json
+
+{
+  "content": "新的贸易路线开辟了更多商业机会"
+}
+
+### Simple Search - Default Limit (100)
+
+GET http://localhost:8000/api/v1/search/simple?q=山
+
+### Simple Search - 联邦
+
+GET http://localhost:8000/api/v1/search/simple?q=联邦
 
 ### Simple Search - 和平
 
@@ -94,6 +116,18 @@ GET http://localhost:8000/api/v1/search/simple?q=和平
 
 GET http://localhost:8000/api/v1/search/simple?q=科技
 
-### Delete Datasource
+### Simple Search with Limit n=5
 
-DELETE http://localhost:8000/api/v1/datasource/datasource-crud-test
+GET http://localhost:8000/api/v1/search/simple?q=星球&n=5
+
+### Simple Search with Limit n=1
+
+GET http://localhost:8000/api/v1/search/simple?q=联邦&n=1
+
+### Simple Search with Limit n=10
+
+GET http://localhost:8000/api/v1/search/simple?q=山&n=10
+
+### Simple Search with Large Limit n=1000
+
+GET http://localhost:8000/api/v1/search/simple?q=星&n=1000
