@@ -64,10 +64,7 @@ func TestDocumentCRUDAndSearch(t *testing.T) {
 			ID:          "doc-test-002",
 			Title:       "星际贸易协定",
 			Description: "山达尔星与邻近星系的贸易关系",
-			Data: map[string]interface{}{
-				"author":   "贸易部",
-				"category": "经济",
-			},
+			Data:        map[string]interface{}{"author": "贸易部", "category": "经济"},
 			Texts: []string{
 				"星际贸易协定促进了各星球之间的经济交流",
 				"山达尔星作为贸易中心，吸引了大量商业活动",
@@ -239,6 +236,147 @@ func TestDocumentCRUDAndSearch(t *testing.T) {
 // Helper function to check if text contains a substring
 func containsText(text, substr string) bool {
 	return len(text) > 0 && len(substr) > 0 && (text == substr || bytes.Contains([]byte(text), []byte(substr)))
+}
+
+// TestSearchWithLimitParameter tests the n parameter for limiting search results
+func TestSearchWithLimitParameter(t *testing.T) {
+	controller, db := setupTestController(t)
+	defer db.Close()
+
+	e := echo.New()
+
+	// Create multiple documents to test limit functionality
+	for i := 1; i <= 10; i++ {
+		reqBody, err := json.Marshal(NewDocumentParams{
+			ID:          "doc-limit-test-" + string(rune('0'+i)),
+			Title:       "测试文档",
+			Description: "测试限制参数",
+			Data:        map[string]interface{}{"index": i},
+			Texts:       []string{"这是一个包含测试关键词的文档内容"},
+		})
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/doc/", bytes.NewReader(reqBody))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		err = controller.NewDocument(c)
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusCreated, rec.Code)
+	}
+
+	// Test with default limit (should return all 10 results since default is 100)
+	t.Run("SearchWithDefaultLimit", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/search/simple?q=测试", nil)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		err := controller.SimpleSearch(c)
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusOK, rec.Code)
+
+		var results []SearchResultItem
+		err = json.Unmarshal(rec.Body.Bytes(), &results)
+		require.NoError(t, err)
+		assert.Equal(t, 10, len(results), "Should return all 10 results with default limit")
+	})
+
+	// Test with n=5 (should return exactly 5 results)
+	t.Run("SearchWithLimit5", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/search/simple?q=测试&n=5", nil)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		err := controller.SimpleSearch(c)
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusOK, rec.Code)
+
+		var results []SearchResultItem
+		err = json.Unmarshal(rec.Body.Bytes(), &results)
+		require.NoError(t, err)
+		assert.Equal(t, 5, len(results), "Should return exactly 5 results when n=5")
+	})
+
+	// Test with n=1 (should return exactly 1 result)
+	t.Run("SearchWithLimit1", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/search/simple?q=测试&n=1", nil)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		err := controller.SimpleSearch(c)
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusOK, rec.Code)
+
+		var results []SearchResultItem
+		err = json.Unmarshal(rec.Body.Bytes(), &results)
+		require.NoError(t, err)
+		assert.Equal(t, 1, len(results), "Should return exactly 1 result when n=1")
+	})
+
+	// Test with n=0 or invalid (should use default limit of 100)
+	t.Run("SearchWithInvalidLimit", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/search/simple?q=测试&n=0", nil)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		err := controller.SimpleSearch(c)
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusOK, rec.Code)
+
+		var results []SearchResultItem
+		err = json.Unmarshal(rec.Body.Bytes(), &results)
+		require.NoError(t, err)
+		assert.Equal(t, 10, len(results), "Should return all 10 results when n=0 (falls back to default)")
+	})
+
+	// Test with n=-1 (should use default limit of 100)
+	t.Run("SearchWithNegativeLimit", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/search/simple?q=测试&n=-1", nil)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		err := controller.SimpleSearch(c)
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusOK, rec.Code)
+
+		var results []SearchResultItem
+		err = json.Unmarshal(rec.Body.Bytes(), &results)
+		require.NoError(t, err)
+		assert.Equal(t, 10, len(results), "Should return all 10 results when n=-1 (falls back to default)")
+	})
+
+	// Test with n=abc (invalid string, should use default limit)
+	t.Run("SearchWithNonNumericLimit", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/search/simple?q=测试&n=abc", nil)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		err := controller.SimpleSearch(c)
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusOK, rec.Code)
+
+		var results []SearchResultItem
+		err = json.Unmarshal(rec.Body.Bytes(), &results)
+		require.NoError(t, err)
+		assert.Equal(t, 10, len(results), "Should return all 10 results when n=abc (falls back to default)")
+	})
+
+	// Test with very large n (should return all available results)
+	t.Run("SearchWithLargeLimit", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/search/simple?q=测试&n=1000", nil)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		err := controller.SimpleSearch(c)
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusOK, rec.Code)
+
+		var results []SearchResultItem
+		err = json.Unmarshal(rec.Body.Bytes(), &results)
+		require.NoError(t, err)
+		assert.Equal(t, 10, len(results), "Should return all 10 available results when n=1000")
+	})
 }
 
 // TestDocumentWithEmptyData tests creating a document with nil/empty data

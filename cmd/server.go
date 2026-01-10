@@ -90,6 +90,7 @@ var serverCommand = &cobra.Command{
 		textGroup := apiGroup.Group("/text")
 		textGroup.GET("/:text_id", c.GetTextChunk)
 		textGroup.DELETE("/:text_id", c.DeleteTextChunk)
+
 		// Query API
 		searchGroup := apiGroup.Group("/search")
 		searchGroup.GET("/simple", c.SimpleSearch)

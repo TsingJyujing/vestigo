@@ -6,6 +6,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
@@ -170,11 +171,7 @@ func (c *Controller) DeleteDocument(echoCtx echo.Context) error {
 			}
 			_, err = tx.ExecContext(ctx, `
 				DELETE FROM text_chunk_fts 
-				WHERE id IN (
-				SELECT id FROM text_chunk tc WHERE tc.document_id = ?
-				)`,
-				docId,
-			)
+				WHERE id IN (SELECT id FROM text_chunk tc WHERE tc.document_id = ?)`, docId)
 			if err != nil {
 				return nil, err
 			}
@@ -300,6 +297,10 @@ func (c *Controller) SimpleSearch(echoCtx echo.Context) error {
 	if query == "" {
 		return handleGenericError(echoCtx, echo.NewHTTPError(http.StatusBadRequest, "query parameter 'q' is required"), http.StatusBadRequest)
 	}
+	nDoc, err := strconv.Atoi(echoCtx.QueryParam("n"))
+	if err != nil || nDoc <= 0 {
+		nDoc = 100
+	}
 
 	rows, err := c.db.QueryContext(ctx, `
 		SELECT 
@@ -314,8 +315,8 @@ func (c *Controller) SimpleSearch(echoCtx echo.Context) error {
 		JOIN document d ON d.id = tc.document_id
 		WHERE fts.seg_content MATCH ?
 		ORDER BY fts.rank
-		LIMIT 100
-	`, query) // TODO limit number controlled by query param (default is 100)
+		LIMIT ?
+	`, query, nDoc)
 	if err != nil {
 		return handleInternalError(echoCtx, err)
 	}
