@@ -170,10 +170,11 @@ func (c *Controller) DeleteDocument(echoCtx echo.Context) error {
 			}
 			_, err = tx.ExecContext(ctx, `
 				DELETE FROM text_chunk_fts 
-				WHERE text_chunk_id IN (
-					SELECT id FROM text_chunk tc WHERE tc.document_id = ?
-				)
-			`, docId)
+				WHERE id IN (
+				SELECT id FROM text_chunk tc WHERE tc.document_id = ?
+				)`,
+				docId,
+			)
 			if err != nil {
 				return nil, err
 			}
@@ -328,11 +329,9 @@ func (c *Controller) SimpleSearch(echoCtx echo.Context) error {
 	results := make([]SearchResultItem, 0)
 	for rows.Next() {
 		var item SearchResultItem
-		var description sql.NullString
-		if err := rows.Scan(&item.TextChunkID, &item.Content, &item.DocumentID, &item.Title, &description, &item.Rank); err != nil {
+		if err := rows.Scan(&item.TextChunkID, &item.Content, &item.DocumentID, &item.Title, &item.Description, &item.Rank); err != nil {
 			return handleInternalError(echoCtx, err)
 		}
-		item.Description = description.String
 		results = append(results, item)
 	}
 

@@ -85,7 +85,6 @@ var serverCommand = &cobra.Command{
 		documentGroup.GET("/:doc_id", c.GetDocument)
 		documentGroup.DELETE("/:doc_id", c.DeleteDocument)
 		documentGroup.POST("/:doc_id/text", c.NewTextChunk)
-		// TODO add one API to get all text from document
 
 		// Text Chunk
 		textGroup := apiGroup.Group("/text")
