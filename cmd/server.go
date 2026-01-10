@@ -12,6 +12,7 @@ import (
 
 	"github.com/labstack/echo-contrib/echoprometheus"
 	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -77,9 +78,11 @@ var serverCommand = &cobra.Command{
 		echoServer.GET("/health", func(c echo.Context) error {
 			return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
 		})
+		echoServer.Use(middleware.CORS()) // Enable CORS for all origins
 
 		// RESTful API routes
 		apiGroup := echoServer.Group("/api/v1")
+		apiGroup.Use(middleware.RequestLogger())
 
 		// Apply Bearer Token authentication if tokens are configured
 		tokens := config.GetStringSlice("server.tokens")
