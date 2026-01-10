@@ -4,6 +4,7 @@ type Envelope struct {
 	Server Server `yaml:"server"`
 }
 type Server struct {
-	Address  string `yaml:"address"`
-	Database string `yaml:"database"`
+	Address  string   `yaml:"address"`
+	Database string   `yaml:"database"`
+	Tokens   []string `yaml:"tokens"`
 }

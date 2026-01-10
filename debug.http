@@ -1,6 +1,15 @@
+# Bearer Token Authentication Examples
+# If tokens are configured in config.yaml, add Authorization header to API requests
+# Example: Authorization: Bearer your-secret-token-1
+
 ### Check Server Status
 
 GET http://localhost:8000/health
+
+
+### Check Server Metrics
+
+GET http://localhost:8000/metrics
 
 ### Create New Document 1
 

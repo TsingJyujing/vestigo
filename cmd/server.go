@@ -16,6 +16,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/tsingjyujing/vestigo/controller"
+	"github.com/tsingjyujing/vestigo/utils"
 	_ "modernc.org/sqlite"
 )
 
@@ -76,8 +77,18 @@ var serverCommand = &cobra.Command{
 		echoServer.GET("/health", func(c echo.Context) error {
 			return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
 		})
+
 		// RESTful API routes
 		apiGroup := echoServer.Group("/api/v1")
+
+		// Apply Bearer Token authentication if tokens are configured
+		tokens := config.GetStringSlice("server.tokens")
+		if len(tokens) > 0 {
+			logger.Infof("Bearer token authentication enabled with %d token(s)", len(tokens))
+			apiGroup.Use(utils.CreateBearerTokenMiddleware(tokens))
+		} else {
+			logger.Warn("Bearer token authentication disabled - no tokens configured")
+		}
 
 		// Document
 		documentGroup := apiGroup.Group("/doc")

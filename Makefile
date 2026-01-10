@@ -5,6 +5,6 @@ generate_sql:
 start_server: generate_sql
 	go run main.go server
 
-build-binary:
+build-binary: generate_sql
 	mkdir -p "build"
 	go build -o build/vestigo main.go
