@@ -181,28 +181,24 @@ func (c *Controller) DeleteDocument(echoCtx echo.Context) error {
 		c.db,
 		nil,
 		func(tx *sql.Tx) (any, error) {
-			_, err := tx.ExecContext(ctx, `
-				DELETE FROM text_embedding 
-				WHERE text_chunk_id IN (
-					SELECT id FROM text_chunk tc
-					WHERE tc.document_id = ?
-				)
-			`, docId)
-			if err != nil {
+			queries := dao.New(tx)
+			// Delete text embeddings associated with this document's chunks
+			if err := queries.DeleteTextEmbeddingsByDocumentID(ctx, docId); err != nil {
 				return nil, err
 			}
-			_, err = tx.ExecContext(ctx, `
-				DELETE FROM text_chunk_fts 
-				WHERE id IN (SELECT id FROM text_chunk tc WHERE tc.document_id = ?)`, docId)
-			if err != nil {
+			// Delete FTS entries
+			if err := queries.DeleteTextChunkFTSByDocumentID(ctx, docId); err != nil {
 				return nil, err
 			}
-			_, err = tx.ExecContext(ctx, `DELETE FROM text_chunk WHERE document_id = ?`, docId)
-			if err != nil {
+			// Delete text chunks
+			if err := queries.DeleteTextChunksByDocumentID(ctx, docId); err != nil {
 				return nil, err
 			}
-			err = dao.New(tx).DeleteDocument(ctx, docId)
-			return nil, err
+			// Delete document
+			if err := queries.DeleteDocument(ctx, docId); err != nil {
+				return nil, err
+			}
+			return nil, nil
 		},
 	)
 	if err != nil {
@@ -256,13 +252,16 @@ func (c *Controller) createTextChunks(ctx context.Context, docId string, tx *sql
 		ID:         newUUID.String(),
 		SegContent: segContent,
 	}
-	newText, err := dao.New(tx).NewTextChunk(ctx, requestParam)
+	queries := dao.New(tx)
+	newText, err := queries.NewTextChunk(ctx, requestParam)
 	if err != nil {
 		return nil, err
 	}
-	// Add to FTS5 table
-	_, err = tx.ExecContext(ctx, "INSERT INTO text_chunk_fts (id, seg_content) VALUES (?, ?)", newText.ID, newText.SegContent)
-	if err != nil {
+	// Add to FTS5 table using generated method
+	if err := queries.InsertTextChunkFTS(ctx, dao.InsertTextChunkFTSParams{
+		ID:         newText.ID,
+		SegContent: newText.SegContent,
+	}); err != nil {
 		return nil, err
 	}
 	return &newText, nil
@@ -286,16 +285,20 @@ func (c *Controller) DeleteTextChunk(echoCtx echo.Context) error {
 		c.db,
 		nil,
 		func(tx *sql.Tx) (any, error) {
-			_, err := tx.ExecContext(ctx, `DELETE FROM text_embedding WHERE text_chunk_id = ?`, textId)
-			if err != nil {
+			queries := dao.New(tx)
+			// Delete text embeddings
+			if err := queries.DeleteTextEmbeddingsByTextChunkID(ctx, textId); err != nil {
 				return nil, err
 			}
-			_, err = tx.ExecContext(ctx, `DELETE FROM text_chunk_fts WHERE id = ?`, textId)
-			if err != nil {
+			// Delete FTS entry
+			if err := queries.DeleteTextChunkFTSByID(ctx, textId); err != nil {
 				return nil, err
 			}
-			err = dao.New(tx).DeleteTextChunk(ctx, textId)
-			return nil, err
+			// Delete text chunk
+			if err := queries.DeleteTextChunk(ctx, textId); err != nil {
+				return nil, err
+			}
+			return nil, nil
 		},
 	)
 	if err != nil {

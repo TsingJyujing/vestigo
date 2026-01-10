@@ -31,6 +31,62 @@ func (q *Queries) DeleteTextChunk(ctx context.Context, id string) error {
 	return err
 }
 
+const deleteTextChunkFTSByDocumentID = `-- name: DeleteTextChunkFTSByDocumentID :exec
+DELETE FROM text_chunk_fts 
+WHERE id IN (
+    SELECT id FROM text_chunk tc 
+    WHERE tc.document_id = ?
+)
+`
+
+func (q *Queries) DeleteTextChunkFTSByDocumentID(ctx context.Context, documentID string) error {
+	_, err := q.db.ExecContext(ctx, deleteTextChunkFTSByDocumentID, documentID)
+	return err
+}
+
+const deleteTextChunkFTSByID = `-- name: DeleteTextChunkFTSByID :exec
+DELETE FROM text_chunk_fts 
+WHERE id = ?
+`
+
+func (q *Queries) DeleteTextChunkFTSByID(ctx context.Context, id string) error {
+	_, err := q.db.ExecContext(ctx, deleteTextChunkFTSByID, id)
+	return err
+}
+
+const deleteTextChunksByDocumentID = `-- name: DeleteTextChunksByDocumentID :exec
+DELETE FROM text_chunk 
+WHERE document_id = ?
+`
+
+func (q *Queries) DeleteTextChunksByDocumentID(ctx context.Context, documentID string) error {
+	_, err := q.db.ExecContext(ctx, deleteTextChunksByDocumentID, documentID)
+	return err
+}
+
+const deleteTextEmbeddingsByDocumentID = `-- name: DeleteTextEmbeddingsByDocumentID :exec
+DELETE FROM text_embedding 
+WHERE text_chunk_id IN (
+    SELECT id FROM text_chunk tc
+    WHERE tc.document_id = ?
+)
+`
+
+func (q *Queries) DeleteTextEmbeddingsByDocumentID(ctx context.Context, documentID string) error {
+	_, err := q.db.ExecContext(ctx, deleteTextEmbeddingsByDocumentID, documentID)
+	return err
+}
+
+const deleteTextEmbeddingsByTextChunkID = `-- name: DeleteTextEmbeddingsByTextChunkID :exec
+DELETE FROM text_embedding 
+WHERE text_chunk_id = ?
+`
+
+func (q *Queries) DeleteTextEmbeddingsByTextChunkID(ctx context.Context, textChunkID string) error {
+	_, err := q.db.ExecContext(ctx, deleteTextEmbeddingsByTextChunkID, textChunkID)
+	return err
+}
+
 const getDocument = `-- name: GetDocument :one
 SELECT id, title, description, data, created_at
 FROM document
@@ -69,6 +125,21 @@ func (q *Queries) GetTextChunk(ctx context.Context, id string) (TextChunk, error
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const insertTextChunkFTS = `-- name: InsertTextChunkFTS :exec
+INSERT INTO text_chunk_fts (id, seg_content) 
+VALUES (?, ?)
+`
+
+type InsertTextChunkFTSParams struct {
+	ID         string
+	SegContent string
+}
+
+func (q *Queries) InsertTextChunkFTS(ctx context.Context, arg InsertTextChunkFTSParams) error {
+	_, err := q.db.ExecContext(ctx, insertTextChunkFTS, arg.ID, arg.SegContent)
+	return err
 }
 
 const listTextChunksByDocumentID = `-- name: ListTextChunksByDocumentID :many
