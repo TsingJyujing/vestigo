@@ -7,19 +7,7 @@ package dao
 
 import (
 	"context"
-	"database/sql"
 )
-
-const deleteDatasource = `-- name: DeleteDatasource :exec
-DELETE
-FROM datasource
-WHERE id = ?
-`
-
-func (q *Queries) DeleteDatasource(ctx context.Context, id string) error {
-	_, err := q.db.ExecContext(ctx, deleteDatasource, id)
-	return err
-}
 
 const deleteDocument = `-- name: DeleteDocument :exec
 DELETE
@@ -43,22 +31,8 @@ func (q *Queries) DeleteTextChunk(ctx context.Context, id string) error {
 	return err
 }
 
-const getDatasource = `-- name: GetDatasource :one
-SELECT id, name, created_at
-FROM datasource
-WHERE id = ?
-LIMIT 1
-`
-
-func (q *Queries) GetDatasource(ctx context.Context, id string) (Datasource, error) {
-	row := q.db.QueryRowContext(ctx, getDatasource, id)
-	var i Datasource
-	err := row.Scan(&i.ID, &i.Name, &i.CreatedAt)
-	return i, err
-}
-
 const getDocument = `-- name: GetDocument :one
-SELECT id, datasource_id, title, description, created_at
+SELECT id, title, description, data, created_at
 FROM document
 WHERE id = ?
 LIMIT 1
@@ -69,9 +43,9 @@ func (q *Queries) GetDocument(ctx context.Context, id string) (Document, error) 
 	var i Document
 	err := row.Scan(
 		&i.ID,
-		&i.DatasourceID,
 		&i.Title,
 		&i.Description,
+		&i.Data,
 		&i.CreatedAt,
 	)
 	return i, err
@@ -95,34 +69,6 @@ func (q *Queries) GetTextChunk(ctx context.Context, id string) (TextChunk, error
 		&i.CreatedAt,
 	)
 	return i, err
-}
-
-const listDatasources = `-- name: ListDatasources :many
-SELECT id, name, created_at
-FROM datasource
-`
-
-func (q *Queries) ListDatasources(ctx context.Context) ([]Datasource, error) {
-	rows, err := q.db.QueryContext(ctx, listDatasources)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []Datasource
-	for rows.Next() {
-		var i Datasource
-		if err := rows.Scan(&i.ID, &i.Name, &i.CreatedAt); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
 }
 
 const listTextChunksByDocumentID = `-- name: ListTextChunksByDocumentID :many
@@ -160,42 +106,24 @@ func (q *Queries) ListTextChunksByDocumentID(ctx context.Context, documentID str
 	return items, nil
 }
 
-const newDatasource = `-- name: NewDatasource :one
-INSERT INTO datasource (id, name)
-VALUES (?, ?)
-RETURNING id, name, created_at
-`
-
-type NewDatasourceParams struct {
-	ID   string
-	Name string
-}
-
-func (q *Queries) NewDatasource(ctx context.Context, arg NewDatasourceParams) (Datasource, error) {
-	row := q.db.QueryRowContext(ctx, newDatasource, arg.ID, arg.Name)
-	var i Datasource
-	err := row.Scan(&i.ID, &i.Name, &i.CreatedAt)
-	return i, err
-}
-
 const newDocument = `-- name: NewDocument :exec
-INSERT INTO document (id, datasource_id, title, description)
+INSERT INTO document (id, title, description, data)
 VALUES (?, ?, ?, ?)
 `
 
 type NewDocumentParams struct {
-	ID           string
-	DatasourceID string
-	Title        string
-	Description  sql.NullString
+	ID          string
+	Title       string
+	Description string
+	Data        string
 }
 
 func (q *Queries) NewDocument(ctx context.Context, arg NewDocumentParams) error {
 	_, err := q.db.ExecContext(ctx, newDocument,
 		arg.ID,
-		arg.DatasourceID,
 		arg.Title,
 		arg.Description,
+		arg.Data,
 	)
 	return err
 }

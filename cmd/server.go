@@ -79,21 +79,21 @@ var serverCommand = &cobra.Command{
 		// RESTful API routes
 		apiGroup := echoServer.Group("/api/v1")
 
-		datasourceGroup := apiGroup.Group("/datasource")
-		documentGroup := apiGroup.Group("/doc")
-		textGroup := apiGroup.Group("/text")
-
-		datasourceGroup.GET("/:datasource_id", c.GetDatasource)
-		datasourceGroup.POST("/", c.NewDatasource)
-		datasourceGroup.DELETE("/:datasource_id", c.DeleteDatasource)
-		datasourceGroup.POST("/:datasource_id/doc", c.NewDocument)
 		// Document
+		documentGroup := apiGroup.Group("/doc")
+		documentGroup.POST("/", c.NewDocument)
 		documentGroup.GET("/:doc_id", c.GetDocument)
 		documentGroup.DELETE("/:doc_id", c.DeleteDocument)
 		documentGroup.POST("/:doc_id/text", c.NewTextChunk)
+		// TODO add one API to get all text from document
+
 		// Text Chunk
+		textGroup := apiGroup.Group("/text")
 		textGroup.GET("/:text_id", c.GetTextChunk)
 		textGroup.DELETE("/:text_id", c.DeleteTextChunk)
+		// Query API
+		searchGroup := apiGroup.Group("/search")
+		searchGroup.GET("/simple", c.SimpleSearch)
 
 		// Start server in a goroutine
 		go func() {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	_ "embed"
+	"encoding/json"
 	"net/http"
 	"strings"
 
@@ -81,49 +82,16 @@ func handleInternalError(echoCtx echo.Context, err error) error {
 	return handleGenericError(echoCtx, err, http.StatusInternalServerError)
 }
 
-func (c *Controller) GetDatasource(echoCtx echo.Context) error {
-	ctx := echoCtx.Request().Context()
-	datasourceId := echoCtx.Param("datasource_id")
-	ds, err := c.queries.GetDatasource(ctx, datasourceId)
-	if err != nil {
-		return handleSQLError(echoCtx, err)
-	}
-	return echoCtx.JSON(http.StatusOK, ds)
-}
-
-func (c *Controller) NewDatasource(echoCtx echo.Context) error {
-	ctx := echoCtx.Request().Context()
-	param := dao.NewDatasourceParams{}
-	if err := echoCtx.Bind(&param); err != nil {
-		return handleGenericError(echoCtx, err, http.StatusBadRequest)
-	}
-	_, err := c.queries.NewDatasource(ctx, param)
-	if err != nil {
-		return handleInternalError(echoCtx, err)
-	}
-	return echoCtx.JSON(http.StatusCreated, map[string]string{"status": "ok"})
-}
-
-func (c *Controller) DeleteDatasource(echoCtx echo.Context) error {
-	ctx := echoCtx.Request().Context()
-	datasourceId := echoCtx.Param("datasource_id")
-	err := c.queries.DeleteDatasource(ctx, datasourceId)
-	if err != nil {
-		return handleInternalError(echoCtx, err)
-	}
-	return echoCtx.JSON(http.StatusOK, map[string]string{"status": "ok"})
-}
-
 type NewDocumentParams struct {
-	ID          string
-	Title       string
-	Description string
-	Texts       []string
+	ID          string                 `json:"id"`
+	Title       string                 `json:"title"`
+	Description string                 `json:"description"`
+	Data        map[string]interface{} `json:"data"`
+	Texts       []string               `json:"texts"`
 }
 
 func (c *Controller) NewDocument(echoCtx echo.Context) error {
 	ctx := echoCtx.Request().Context()
-	datasourceId := echoCtx.Param("datasource_id")
 
 	param := NewDocumentParams{}
 	if err := echoCtx.Bind(&param); err != nil {
@@ -134,11 +102,21 @@ func (c *Controller) NewDocument(echoCtx echo.Context) error {
 		c.db,
 		nil,
 		func(tx *sql.Tx) (int, error) {
+			// Convert data map to JSON string, default to empty object
+			dataJSON := "{}"
+			if len(param.Data) > 0 {
+				jsonBytes, err := json.Marshal(param.Data)
+				if err != nil {
+					return 0, err
+				}
+				dataJSON = string(jsonBytes)
+			}
+
 			err := dao.New(tx).NewDocument(ctx, dao.NewDocumentParams{
-				ID:           param.ID,
-				DatasourceID: datasourceId,
-				Title:        param.Title,
-				Description:  sql.NullString{String: param.Description, Valid: param.Description != ""},
+				ID:          param.ID,
+				Title:       param.Title,
+				Description: param.Description,
+				Data:        dataJSON,
 			})
 			if err != nil {
 				return 0, err
@@ -171,11 +149,42 @@ func (c *Controller) GetDocument(echoCtx echo.Context) error {
 	return echoCtx.JSON(http.StatusOK, doc) // TODO add all text chunks by config
 }
 
+// DeleteDocument deletes a document and all related text chunks / embeddings
 func (c *Controller) DeleteDocument(echoCtx echo.Context) error {
 	ctx := echoCtx.Request().Context()
 	docId := echoCtx.Param("doc_id")
-	// TODO delete from indexes for each index
-	err := c.queries.DeleteDocument(ctx, docId)
+	_, err := utils.WithTx(
+		ctx,
+		c.db,
+		nil,
+		func(tx *sql.Tx) (any, error) {
+			_, err := tx.ExecContext(ctx, `
+				DELETE FROM text_embedding 
+				WHERE text_chunk_id IN (
+					SELECT id FROM text_chunk tc
+					WHERE tc.document_id = ?
+				)
+			`, docId)
+			if err != nil {
+				return nil, err
+			}
+			_, err = tx.ExecContext(ctx, `
+				DELETE FROM text_chunk_fts 
+				WHERE text_chunk_id IN (
+					SELECT id FROM text_chunk tc WHERE tc.document_id = ?
+				)
+			`, docId)
+			if err != nil {
+				return nil, err
+			}
+			_, err = tx.ExecContext(ctx, `DELETE FROM text_chunk WHERE document_id = ?`, docId)
+			if err != nil {
+				return nil, err
+			}
+			err = dao.New(tx).DeleteDocument(ctx, docId)
+			return nil, err
+		},
+	)
 	if err != nil {
 		return handleInternalError(echoCtx, err)
 	}
@@ -231,17 +240,11 @@ func (c *Controller) createTextChunks(ctx context.Context, docId string, tx *sql
 	if err != nil {
 		return nil, err
 	}
-	// Add to BM25 index FTS5 table
-	res, err := c.db.ExecContext(ctx, "INSERT INTO text_chunk_fts (rowid, seg_content) VALUES (?, ?)", newText.ID, newText.SegContent)
+	// Add to FTS5 table
+	_, err = tx.ExecContext(ctx, "INSERT INTO text_chunk_fts (id, seg_content) VALUES (?, ?)", newText.ID, newText.SegContent)
 	if err != nil {
 		return nil, err
 	}
-	rowId, err := res.LastInsertId()
-	if err != nil {
-		return nil, err
-	}
-	logger.WithField("rowId", rowId).Info("insert into text_chunk_fts")
-	// TODO add to indexes as well
 	return &newText, nil
 }
 
@@ -258,10 +261,84 @@ func (c *Controller) GetTextChunk(echoCtx echo.Context) error {
 func (c *Controller) DeleteTextChunk(echoCtx echo.Context) error {
 	ctx := echoCtx.Request().Context()
 	textId := echoCtx.Param("text_id")
-	err := c.queries.DeleteTextChunk(ctx, textId)
-	// TODO delete from indexes
+	_, err := utils.WithTx(
+		ctx,
+		c.db,
+		nil,
+		func(tx *sql.Tx) (any, error) {
+			_, err := tx.ExecContext(ctx, `DELETE FROM text_embedding WHERE text_chunk_id = ?`, textId)
+			if err != nil {
+				return nil, err
+			}
+			_, err = tx.ExecContext(ctx, `DELETE FROM text_chunk_fts WHERE id = ?`, textId)
+			if err != nil {
+				return nil, err
+			}
+			err = dao.New(tx).DeleteTextChunk(ctx, textId)
+			return nil, err
+		},
+	)
 	if err != nil {
 		return handleInternalError(echoCtx, err)
 	}
 	return echoCtx.JSON(http.StatusOK, map[string]string{"status": "ok"})
+}
+
+type SearchResultItem struct {
+	TextChunkID string  `json:"text_chunk_id"`
+	Content     string  `json:"content"`
+	DocumentID  string  `json:"document_id"`
+	Title       string  `json:"title"`
+	Description string  `json:"description"`
+	Rank        float64 `json:"rank"`
+}
+
+func (c *Controller) SimpleSearch(echoCtx echo.Context) error {
+	ctx := echoCtx.Request().Context()
+	query := echoCtx.QueryParam("q")
+	if query == "" {
+		return handleGenericError(echoCtx, echo.NewHTTPError(http.StatusBadRequest, "query parameter 'q' is required"), http.StatusBadRequest)
+	}
+
+	rows, err := c.db.QueryContext(ctx, `
+		SELECT 
+			tc.id,
+			tc.content,
+			tc.document_id,
+			d.title,
+			d.description,
+			fts.rank
+		FROM text_chunk_fts fts
+		JOIN text_chunk tc ON tc.id = fts.id
+		JOIN document d ON d.id = tc.document_id
+		WHERE fts.seg_content MATCH ?
+		ORDER BY fts.rank
+		LIMIT 100
+	`, query) // TODO limit number controlled by query param (default is 100)
+	if err != nil {
+		return handleInternalError(echoCtx, err)
+	}
+	defer func(rows *sql.Rows) {
+		err := rows.Close()
+		if err != nil {
+			logger.WithError(err).Error("Failed to close rows")
+		}
+	}(rows)
+
+	results := make([]SearchResultItem, 0)
+	for rows.Next() {
+		var item SearchResultItem
+		var description sql.NullString
+		if err := rows.Scan(&item.TextChunkID, &item.Content, &item.DocumentID, &item.Title, &description, &item.Rank); err != nil {
+			return handleInternalError(echoCtx, err)
+		}
+		item.Description = description.String
+		results = append(results, item)
+	}
+
+	if err := rows.Err(); err != nil {
+		return handleInternalError(echoCtx, err)
+	}
+
+	return echoCtx.JSON(http.StatusOK, results)
 }

@@ -16,21 +16,84 @@ Content-Type: application/json
 
 GET http://localhost:8000/api/v1/datasource/datasource-crud-test
 
-### Create New Document
+### Create New Document 1
 
 POST http://localhost:8000/api/v1/datasource/datasource-crud-test/doc
 Content-Type: application/json
 
 {
   "Id": "doc-crud-test-20260107-001711",
-  "Title": "Test Title",
+  "Title": "山达尔星联邦介绍",
+  "Description": "关于山达尔星联邦共和国的基本信息",
   "texts": [
     "山达尔星联邦共和国联邦政府是一个强大的政治实体",
     "它由多个星球组成，共同致力于维护和平与繁荣"
   ]
 }
 
+### Create New Document 2
+
+POST http://localhost:8000/api/v1/datasource/datasource-crud-test/doc
+Content-Type: application/json
+
+{
+  "Id": "doc-crud-test-20260107-001712",
+  "Title": "星际贸易协定",
+  "Description": "山达尔星与邻近星系的贸易关系",
+  "texts": [
+    "星际贸易协定促进了各星球之间的经济交流",
+    "山达尔星作为贸易中心，吸引了大量商业活动"
+  ]
+}
+
+### Create New Document 3
+
+POST http://localhost:8000/api/v1/datasource/datasource-crud-test/doc
+Content-Type: application/json
+
+{
+  "Id": "doc-crud-test-20260107-001713",
+  "Title": "联邦科技发展",
+  "Description": "山达尔星联邦的科技创新成就",
+  "texts": [
+    "联邦政府大力投资科技研发项目",
+    "先进的空间跳跃技术使得星际旅行更加便捷",
+    "能源革命为各星球提供了清洁可持续的动力"
+  ]
+}
+
+### Create New Document 4
+
+POST http://localhost:8000/api/v1/datasource/datasource-crud-test/doc
+Content-Type: application/json
+
+{
+  "Id": "doc-crud-test-20260107-001714",
+  "Title": "和平维护机制",
+  "Description": "联邦如何维持星际和平",
+  "texts": [
+    "联邦建立了完善的和平维护机制",
+    "各成员星球通过民主协商解决争端",
+    "军事力量仅用于防御外部威胁"
+  ]
+}
+
+### Simple Search - 山达尔星
+
+GET http://localhost:8000/api/v1/search/simple?q=山达尔星
+
+### Simple Search - 联邦政府
+
+GET http://localhost:8000/api/v1/search/simple?q=联邦政府
+
+### Simple Search - 和平
+
+GET http://localhost:8000/api/v1/search/simple?q=和平
+
+### Simple Search - 科技
+
+GET http://localhost:8000/api/v1/search/simple?q=科技
 
 ### Delete Datasource
 
-DELETE http://localhost:8000/api/v1/datasource-crud-test
+DELETE http://localhost:8000/api/v1/datasource/datasource-crud-test

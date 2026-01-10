@@ -4,22 +4,12 @@
 
 package dao
 
-import (
-	"database/sql"
-)
-
-type Datasource struct {
-	ID        string
-	Name      string
-	CreatedAt int64
-}
-
 type Document struct {
-	ID           string
-	DatasourceID string
-	Title        string
-	Description  sql.NullString
-	CreatedAt    int64
+	ID          string
+	Title       string
+	Description string
+	Data        string
+	CreatedAt   int64
 }
 
 type TextChunk struct {
@@ -31,11 +21,11 @@ type TextChunk struct {
 }
 
 type TextChunkFt struct {
+	ID         string
 	SegContent string
 }
 
 type TextEmbedding struct {
-	ID          string
 	ModelID     string
 	TextChunkID string
 	Vector      []byte

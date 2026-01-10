@@ -1,30 +1,10 @@
--- name: GetDatasource :one
-SELECT *
-FROM datasource
-WHERE id = ?
-LIMIT 1;
-
--- name: NewDatasource :one
-INSERT INTO datasource (id, name)
-VALUES (?, ?)
-RETURNING *;
-
--- name: DeleteDatasource :exec
-DELETE
-FROM datasource
-WHERE id = ?;
-
--- name: ListDatasources :many
-SELECT *
-FROM datasource;
-
 -- name: DeleteDocument :exec
 DELETE
 FROM document
 WHERE id = ?;
 
 -- name: NewDocument :exec
-INSERT INTO document (id, datasource_id, title, description)
+INSERT INTO document (id, title, description, data)
 VALUES (?, ?, ?, ?);
 
 -- name: GetDocument :one
@@ -53,4 +33,3 @@ LIMIT 1;
 DELETE
 FROM text_chunk
 WHERE id = ?;
-
