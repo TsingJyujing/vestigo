@@ -1,5 +1,5 @@
 server:
-  address: ":8000"
+  address: ":8080"
   database: "db.sqlite"
   # tokens: []  # Empty list - no authentication (default)
   # tokens:     # Example with authentication enabled

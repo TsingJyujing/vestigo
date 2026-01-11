@@ -4,16 +4,16 @@
 
 ### Check Server Status
 
-GET http://localhost:8000/health
+GET http://localhost:8080/health
 
 
 ### Check Server Metrics
 
-GET http://localhost:8000/metrics
+GET http://localhost:8080/metrics
 
 ### Create New Document 1
 
-POST http://localhost:8000/api/v1/doc/
+POST http://localhost:8080/api/v1/doc/
 Content-Type: application/json
 
 {
@@ -33,7 +33,7 @@ Content-Type: application/json
 
 ### Create/Overwrite Document with overwrite=true
 
-POST http://localhost:8000/api/v1/doc/?overwrite=true
+POST http://localhost:8080/api/v1/doc/?overwrite=true
 Content-Type: application/json
 
 {
@@ -54,7 +54,7 @@ Content-Type: application/json
 
 ### Create/Overwrite Document with overwrite=1
 
-POST http://localhost:8000/api/v1/doc/?overwrite=1
+POST http://localhost:8080/api/v1/doc/?overwrite=1
 Content-Type: application/json
 
 {
@@ -75,7 +75,7 @@ Content-Type: application/json
 
 ### Create New Document 2
 
-POST http://localhost:8000/api/v1/doc/
+POST http://localhost:8080/api/v1/doc/
 Content-Type: application/json
 
 {
@@ -95,7 +95,7 @@ Content-Type: application/json
 
 ### Create New Document 3
 
-POST http://localhost:8000/api/v1/doc/
+POST http://localhost:8080/api/v1/doc/
 Content-Type: application/json
 
 {
@@ -116,7 +116,7 @@ Content-Type: application/json
 
 ### Create New Document 4
 
-POST http://localhost:8000/api/v1/doc/
+POST http://localhost:8080/api/v1/doc/
 Content-Type: application/json
 
 {
@@ -136,23 +136,23 @@ Content-Type: application/json
 
 ### Get Document (without chunks)
 
-GET http://localhost:8000/api/v1/doc/doc-crud-test-20260110-001
+GET http://localhost:8080/api/v1/doc/doc-crud-test-20260110-001
 
 ### Get Document with Text Chunks
 
-GET http://localhost:8000/api/v1/doc/doc-crud-test-20260110-001?with_texts=true
+GET http://localhost:8080/api/v1/doc/doc-crud-test-20260110-001?with_texts=true
 
 ### Get Document with Text Chunks (alternative parameter)
 
-GET http://localhost:8000/api/v1/doc/doc-crud-test-20260110-002?with_texts=1
+GET http://localhost:8080/api/v1/doc/doc-crud-test-20260110-002?with_texts=1
 
 ### Delete Document
 
-DELETE http://localhost:8000/api/v1/doc/doc-crud-test-20260110-001
+DELETE http://localhost:8080/api/v1/doc/doc-crud-test-20260110-001
 
 ### Add Text Chunk to Document
 
-POST http://localhost:8000/api/v1/doc/doc-crud-test-20260110-002/text
+POST http://localhost:8080/api/v1/doc/doc-crud-test-20260110-002/text
 Content-Type: application/json
 
 {
@@ -161,32 +161,32 @@ Content-Type: application/json
 
 ### Simple Search - Default Limit (100)
 
-GET http://localhost:8000/api/v1/search/simple?q=山
+GET http://localhost:8080/api/v1/search/simple?q=山
 
 ### Simple Search - 联邦
 
-GET http://localhost:8000/api/v1/search/simple?q=联邦
+GET http://localhost:8080/api/v1/search/simple?q=联邦
 
 ### Simple Search - 和平
 
-GET http://localhost:8000/api/v1/search/simple?q=和平
+GET http://localhost:8080/api/v1/search/simple?q=和平
 
 ### Simple Search - 科技
 
-GET http://localhost:8000/api/v1/search/simple?q=科技
+GET http://localhost:8080/api/v1/search/simple?q=科技
 
 ### Simple Search with Limit n=5
 
-GET http://localhost:8000/api/v1/search/simple?q=星球&n=5
+GET http://localhost:8080/api/v1/search/simple?q=星球&n=5
 
 ### Simple Search with Limit n=1
 
-GET http://localhost:8000/api/v1/search/simple?q=联邦&n=1
+GET http://localhost:8080/api/v1/search/simple?q=联邦&n=1
 
 ### Simple Search with Limit n=10
 
-GET http://localhost:8000/api/v1/search/simple?q=山&n=10
+GET http://localhost:8080/api/v1/search/simple?q=山&n=10
 
 ### Simple Search with Large Limit n=1000
 
-GET http://localhost:8000/api/v1/search/simple?q=星&n=1000
+GET http://localhost:8080/api/v1/search/simple?q=星&n=1000

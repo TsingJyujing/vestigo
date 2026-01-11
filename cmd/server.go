@@ -44,7 +44,7 @@ func readConfig() *viper.Viper {
 	}
 	logger.Infof("Using config file: %s", config.ConfigFileUsed())
 	// Set default values
-	config.SetDefault("server.addr", ":8000")
+	config.SetDefault("server.address", ":8080")
 	config.SetDefault("server.db", "db.sqlite")
 	// Check necessary config values
 	return config
@@ -114,7 +114,7 @@ var serverCommand = &cobra.Command{
 		defer stop()
 
 		go func() {
-			addr := config.GetString("server.addr")
+			addr := config.GetString("server.address")
 			logger.Infof("Starting server on %s", addr)
 			if err := echoServer.Start(addr); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				logger.WithError(err).Error("Server start error")
