@@ -408,6 +408,138 @@ func TestSearchWithLimitParameter(t *testing.T) {
 	})
 }
 
+// TestDocumentOverwrite tests the overwrite parameter
+func TestDocumentOverwrite(t *testing.T) {
+	controller, db := setupTestController(t)
+	defer db.Close()
+
+	e := echo.New()
+
+	// Create initial document
+	initialDoc := NewDocumentParams{
+		ID:          "doc-overwrite-test",
+		Title:       "初始文档",
+		Description: "这是原始文档",
+		Data:        map[string]interface{}{"version": 1},
+		Texts:       []string{"初始内容"},
+	}
+
+	reqBody, err := json.Marshal(initialDoc)
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/doc/", bytes.NewReader(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	err = controller.NewDocument(c)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusCreated, rec.Code)
+
+	// Try to create same document again without overwrite (should fail)
+	t.Run("CreateDuplicateWithoutOverwrite", func(t *testing.T) {
+		reqBody, err := json.Marshal(initialDoc)
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/doc/", bytes.NewReader(reqBody))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		err = controller.NewDocument(c)
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusInternalServerError, rec.Code, "Should fail with duplicate ID")
+	})
+
+	// Overwrite with overwrite=true
+	t.Run("OverwriteWithTrue", func(t *testing.T) {
+		updatedDoc := NewDocumentParams{
+			ID:          "doc-overwrite-test",
+			Title:       "更新后的文档",
+			Description: "这是更新后的文档",
+			Data:        map[string]interface{}{"version": 2, "updated": true},
+			Texts:       []string{"更新后的内容", "新增的内容"},
+		}
+
+		reqBody, err := json.Marshal(updatedDoc)
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/doc/?overwrite=true", bytes.NewReader(reqBody))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		err = controller.NewDocument(c)
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusCreated, rec.Code, "Should succeed with overwrite=true")
+
+		// Verify the document was updated
+		req = httptest.NewRequest(http.MethodGet, "/api/v1/doc/doc-overwrite-test?with_texts=true", nil)
+		rec = httptest.NewRecorder()
+		c = e.NewContext(req, rec)
+		c.SetParamNames("doc_id")
+		c.SetParamValues("doc-overwrite-test")
+
+		err = controller.GetDocument(c)
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusOK, rec.Code)
+
+		var response map[string]interface{}
+		err = json.Unmarshal(rec.Body.Bytes(), &response)
+		require.NoError(t, err)
+		assert.Equal(t, "更新后的文档", response["Title"])
+		assert.Equal(t, "这是更新后的文档", response["Description"])
+
+		// Verify texts were updated
+		texts, exists := response["texts"]
+		assert.True(t, exists)
+		textsArray, ok := texts.([]interface{})
+		assert.True(t, ok)
+		assert.Equal(t, 2, len(textsArray), "Should have 2 text chunks after overwrite")
+	})
+
+	// Overwrite with overwrite=1
+	t.Run("OverwriteWithOne", func(t *testing.T) {
+		updatedDoc := NewDocumentParams{
+			ID:          "doc-overwrite-test",
+			Title:       "第三版文档",
+			Description: "使用overwrite=1更新",
+			Data:        map[string]interface{}{"version": 3},
+			Texts:       []string{"第三版内容"},
+		}
+
+		reqBody, err := json.Marshal(updatedDoc)
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/doc/?overwrite=1", bytes.NewReader(reqBody))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		err = controller.NewDocument(c)
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusCreated, rec.Code, "Should succeed with overwrite=1")
+
+		// Verify only 1 text chunk now
+		req = httptest.NewRequest(http.MethodGet, "/api/v1/doc/doc-overwrite-test?with_texts=true", nil)
+		rec = httptest.NewRecorder()
+		c = e.NewContext(req, rec)
+		c.SetParamNames("doc_id")
+		c.SetParamValues("doc-overwrite-test")
+
+		err = controller.GetDocument(c)
+		require.NoError(t, err)
+
+		var response map[string]interface{}
+		err = json.Unmarshal(rec.Body.Bytes(), &response)
+		require.NoError(t, err)
+
+		texts, _ := response["texts"]
+		textsArray, _ := texts.([]interface{})
+		assert.Equal(t, 1, len(textsArray), "Should have 1 text chunk after second overwrite")
+	})
+}
+
 // TestDocumentWithEmptyData tests creating a document with nil/empty data
 func TestDocumentWithEmptyData(t *testing.T) {
 	controller, db := setupTestController(t)

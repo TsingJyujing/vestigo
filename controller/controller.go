@@ -98,11 +98,32 @@ func (c *Controller) NewDocument(echoCtx echo.Context) error {
 	if err := echoCtx.Bind(&param); err != nil {
 		return handleGenericError(echoCtx, err, http.StatusBadRequest)
 	}
+
+	// Check if overwrite parameter is set
+	overwrite := echoCtx.QueryParam("overwrite")
+	shouldOverwrite := overwrite == "true" || overwrite == "1"
+
 	insertCount, err := utils.WithTx(
 		ctx,
 		c.db,
 		nil,
 		func(tx *sql.Tx) (int, error) {
+			queries := dao.New(tx)
+
+			// If overwrite is enabled, delete existing document first
+			if shouldOverwrite {
+				// Check if document exists
+				_, err := queries.GetDocument(ctx, param.ID)
+				if err == nil {
+					// Document exists, delete it using the shared internal function
+					if err := deleteDocumentInternal(ctx, queries, param.ID); err != nil {
+						return 0, err
+					}
+					logger.WithField("document_id", param.ID).Info("Deleted existing document for overwrite")
+				}
+				// If document doesn't exist, ignore the error and continue to create
+			}
+
 			// Convert data map to JSON string, default to empty object
 			dataJSON := "{}"
 			if len(param.Data) > 0 {
@@ -112,7 +133,7 @@ func (c *Controller) NewDocument(echoCtx echo.Context) error {
 				}
 				dataJSON = string(jsonBytes)
 			}
-			err := dao.New(tx).NewDocument(ctx, dao.NewDocumentParams{
+			err := queries.NewDocument(ctx, dao.NewDocumentParams{
 				ID:          param.ID,
 				Title:       param.Title,
 				Description: param.Description,
@@ -172,6 +193,28 @@ func (c *Controller) GetDocument(echoCtx echo.Context) error {
 	return echoCtx.JSON(http.StatusOK, doc)
 }
 
+// deleteDocumentInternal deletes a document and all related text chunks / embeddings
+// This is an internal helper function used by both DeleteDocument and NewDocument (with overwrite)
+func deleteDocumentInternal(ctx context.Context, queries *dao.Queries, docId string) error {
+	// Delete text embeddings associated with this document's chunks
+	if err := queries.DeleteTextEmbeddingsByDocumentID(ctx, docId); err != nil {
+		return err
+	}
+	// Delete FTS entries
+	if err := queries.DeleteTextChunkFTSByDocumentID(ctx, docId); err != nil {
+		return err
+	}
+	// Delete text chunks
+	if err := queries.DeleteTextChunksByDocumentID(ctx, docId); err != nil {
+		return err
+	}
+	// Delete document
+	if err := queries.DeleteDocument(ctx, docId); err != nil {
+		return err
+	}
+	return nil
+}
+
 // DeleteDocument deletes a document and all related text chunks / embeddings
 func (c *Controller) DeleteDocument(echoCtx echo.Context) error {
 	ctx := echoCtx.Request().Context()
@@ -182,20 +225,7 @@ func (c *Controller) DeleteDocument(echoCtx echo.Context) error {
 		nil,
 		func(tx *sql.Tx) (any, error) {
 			queries := dao.New(tx)
-			// Delete text embeddings associated with this document's chunks
-			if err := queries.DeleteTextEmbeddingsByDocumentID(ctx, docId); err != nil {
-				return nil, err
-			}
-			// Delete FTS entries
-			if err := queries.DeleteTextChunkFTSByDocumentID(ctx, docId); err != nil {
-				return nil, err
-			}
-			// Delete text chunks
-			if err := queries.DeleteTextChunksByDocumentID(ctx, docId); err != nil {
-				return nil, err
-			}
-			// Delete document
-			if err := queries.DeleteDocument(ctx, docId); err != nil {
+			if err := deleteDocumentInternal(ctx, queries, docId); err != nil {
 				return nil, err
 			}
 			return nil, nil

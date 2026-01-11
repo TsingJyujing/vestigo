@@ -31,6 +31,48 @@ Content-Type: application/json
   ]
 }
 
+### Create/Overwrite Document with overwrite=true
+
+POST http://localhost:8000/api/v1/doc/?overwrite=true
+Content-Type: application/json
+
+{
+  "id": "doc-crud-test-20260110-001",
+  "title": "山达尔星联邦介绍（更新版）",
+  "description": "更新后的联邦信息",
+  "data": {
+    "author": "联邦档案馆",
+    "category": "政治",
+    "classification": "public",
+    "version": 2
+  },
+  "texts": [
+    "山达尔星联邦共和国是宇宙中最强大的政治联盟之一",
+    "联邦现已扩展至50个星系，包含数百个成员星球"
+  ]
+}
+
+### Create/Overwrite Document with overwrite=1
+
+POST http://localhost:8000/api/v1/doc/?overwrite=1
+Content-Type: application/json
+
+{
+  "id": "doc-crud-test-20260110-002",
+  "title": "星际贸易协定（修订版）",
+  "description": "最新贸易协定内容",
+  "data": {
+    "author": "贸易部",
+    "category": "经济",
+    "year": 2026,
+    "revision": 3
+  },
+  "texts": [
+    "新的星际贸易协定大幅降低了关税壁垒",
+    "促进了自由贸易和经济一体化进程"
+  ]
+}
+
 ### Create New Document 2
 
 POST http://localhost:8000/api/v1/doc/
