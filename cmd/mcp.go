@@ -105,6 +105,40 @@ func (v VestigoMCP) ListModels(ctx context.Context, req *mcp.CallToolRequest, in
 	return nil, ListModelOutput{Models: result}, nil
 }
 
+type GetDocumentInput struct {
+	DocumentID string `json:"document_id" jsonschema:"the ID of the document to retrieve"`
+	// Currently always return text chunks
+}
+
+type GetDocumentOutput struct {
+	Document controller.DocumentWithChunks `json:"document" jsonschema:"the retrieved document with optional text chunks"`
+}
+
+func (v VestigoMCP) GetDocument(ctx context.Context, req *mcp.CallToolRequest, input GetDocumentInput) (*mcp.CallToolResult, GetDocumentOutput, error) {
+	getDocUrl, err := v.GetUrl("/api/v1/doc/"+input.DocumentID, map[string]string{
+		"with_text_chunks": "true",
+	})
+	if err != nil {
+		return nil, GetDocumentOutput{}, err
+	}
+	// Make request
+	request := &http.Request{
+		Method: http.MethodGet,
+		URL:    getDocUrl,
+	}
+	resp, err := v.client.Do(request)
+	if err != nil {
+		return nil, GetDocumentOutput{}, err
+	}
+	defer resp.Body.Close()
+	// Parse response
+	var result controller.DocumentWithChunks
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, GetDocumentOutput{}, err
+	}
+	return nil, GetDocumentOutput{Document: result}, nil
+}
+
 func NewMcpCommand() *cobra.Command {
 	var vestigoEndpoint string
 
@@ -123,6 +157,7 @@ func NewMcpCommand() *cobra.Command {
 			server := mcp.NewServer(&mcp.Implementation{Name: "vestigo-mcp", Title: "MCP server for searching document from Vestigo", Version: "v1.0.0"}, nil)
 			mcp.AddTool(server, &mcp.Tool{Name: "search_documents", Description: "Search documents with query"}, v.SearchDocuments)
 			mcp.AddTool(server, &mcp.Tool{Name: "list_models", Description: "List available models, BM25 is most basic & fastest one, if we can not find anything, we can use other embedding based ANN search models"}, v.ListModels)
+			mcp.AddTool(server, &mcp.Tool{Name: "get_document", Description: "Get document by ID, with option to include text chunks"}, v.GetDocument)
 			if err := server.Run(cmd.Context(), &mcp.StdioTransport{}); err != nil {
 				logger.Fatal(err)
 			}
