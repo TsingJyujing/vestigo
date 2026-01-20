@@ -63,3 +63,8 @@ WHERE id = ?;
 -- name: InsertTextChunkFTS :exec
 INSERT INTO text_chunk_fts (id, seg_content) 
 VALUES (?, ?);
+
+-- name: NewTextEmbedding :exec
+INSERT INTO text_embedding (model_id, text_chunk_id, vector)
+VALUES (?, ?, ?);
+

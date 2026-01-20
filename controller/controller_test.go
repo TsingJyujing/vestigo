@@ -11,6 +11,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/tsingjyujing/vestigo/models"
 	_ "modernc.org/sqlite"
 )
 
@@ -24,8 +25,8 @@ func setupTestController(t *testing.T) (*Controller, *sql.DB) {
 	_, err = db.Exec(GetDDL())
 	require.NoError(t, err, "Failed to create tables")
 
-	// Create controller
-	controller, err := NewController(db)
+	// Create controller with empty embedding models (not needed for basic tests)
+	controller, err := NewController(db, make(map[string]models.BaseEmbeddingModel), t.TempDir(), nil)
 	require.NoError(t, err, "Failed to create controller")
 
 	return controller, db

@@ -229,3 +229,19 @@ func (q *Queries) NewTextChunk(ctx context.Context, arg NewTextChunkParams) (Tex
 	)
 	return i, err
 }
+
+const newTextEmbedding = `-- name: NewTextEmbedding :exec
+INSERT INTO text_embedding (model_id, text_chunk_id, vector)
+VALUES (?, ?, ?)
+`
+
+type NewTextEmbeddingParams struct {
+	ModelID     string
+	TextChunkID string
+	Vector      []byte
+}
+
+func (q *Queries) NewTextEmbedding(ctx context.Context, arg NewTextEmbeddingParams) error {
+	_, err := q.db.ExecContext(ctx, newTextEmbedding, arg.ModelID, arg.TextChunkID, arg.Vector)
+	return err
+}

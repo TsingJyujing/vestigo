@@ -5,15 +5,19 @@ import (
 	"database/sql"
 	_ "embed"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"strings"
 
+	"github.com/coder/hnsw"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/samber/lo"
 	"github.com/sirupsen/logrus"
 	"github.com/tsingjyujing/vestigo/controller/dao"
+	"github.com/tsingjyujing/vestigo/models"
 	"github.com/tsingjyujing/vestigo/text"
 	"github.com/tsingjyujing/vestigo/utils"
 )
@@ -32,13 +36,16 @@ const (
 var logger = logrus.New()
 
 type Controller struct {
-	db         *sql.DB
-	queries    dao.Queries
-	tokenizer  text.Tokenizer
-	normalizer text.Normalizer
+	db               *sql.DB
+	queries          dao.Queries
+	tokenizer        text.Tokenizer
+	normalizer       text.Normalizer
+	embeddingModels  map[string]models.BaseEmbeddingModel
+	embeddingIndexes map[string]*hnsw.SavedGraph[string]
+	summarizeModel   models.SummarizationModel
 }
 
-func NewController(db *sql.DB) (*Controller, error) {
+func NewController(db *sql.DB, embeddingModels map[string]models.BaseEmbeddingModel, embeddingSavePath string, summarizeModel models.SummarizationModel) (*Controller, error) {
 	tokenizer, err := text.NewGSETokenizer(true)
 	if err != nil {
 		return nil, err
@@ -47,17 +54,35 @@ func NewController(db *sql.DB) (*Controller, error) {
 	if err != nil {
 		return nil, err
 	}
+	embeddingIndexes := make(map[string]*hnsw.SavedGraph[string])
+	for modeName, _ := range embeddingModels {
+		// TODO check embedding/...
+		graph, err := hnsw.LoadSavedGraph[string](filepath.Join(embeddingSavePath, fmt.Sprintf("%s.embed", modeName)))
+		// TODO Set parameters, cosine/M/...
+		if err != nil {
+			return nil, err
+		}
+		embeddingIndexes[modeName] = graph
+	}
 	return &Controller{
-		queries:    *dao.New(db),
-		db:         db,
-		tokenizer:  tokenizer,
-		normalizer: normalizer,
+		queries:          *dao.New(db),
+		db:               db,
+		tokenizer:        tokenizer,
+		normalizer:       normalizer,
+		embeddingModels:  embeddingModels,
+		embeddingIndexes: embeddingIndexes,
+		summarizeModel:   summarizeModel,
 	}, nil
 }
 
 // Close closes all resources held by the controller
 func (c *Controller) Close() error {
-	// TODO close search indexes
+	for modelId, graph := range c.embeddingIndexes {
+		err := graph.Save()
+		if err != nil {
+			logger.WithError(err).Errorf("Failed to save embedding index for model %s", modelId)
+		}
+	}
 	if err := c.db.Close(); err != nil {
 		logger.WithError(err).Error("Failed to close database")
 	}
@@ -102,6 +127,18 @@ func (c *Controller) NewDocument(echoCtx echo.Context) error {
 	// Check if overwrite parameter is set
 	overwrite := echoCtx.QueryParam("overwrite")
 	shouldOverwrite := overwrite == "true" || overwrite == "1"
+
+	// AI summarization enabled?
+	aiSummarize := echoCtx.QueryParam("ai_sum")
+	if (aiSummarize == "true" || aiSummarize == "1") && len(param.Texts) > 0 && c.summarizeModel != nil {
+		summarizedText, err := c.summarizeModel.Summarize(ctx, param.Texts)
+		if err != nil {
+			logger.WithError(err).Error("failed to summarize document texts")
+		} else {
+			param.Texts = append(param.Texts, summarizedText)
+			logger.WithField("texts", summarizedText).Info("summarized document texts") // TODO remove debug log after finished
+		}
+	}
 
 	insertCount, err := utils.WithTx(
 		ctx,
@@ -240,6 +277,10 @@ func (c *Controller) DeleteDocument(echoCtx echo.Context) error {
 func (c *Controller) NewTextChunk(echoCtx echo.Context) error {
 	ctx := echoCtx.Request().Context()
 	docId := echoCtx.Param("doc_id")
+	//  validate document ID before creating text chunk
+	if _, err := c.queries.GetDocument(ctx, docId); err != nil {
+		return handleSQLError(echoCtx, err)
+	}
 	param := &struct {
 		Content string `json:"content"`
 	}{}
@@ -275,7 +316,7 @@ func (c *Controller) createTextChunks(ctx context.Context, docId string, tx *sql
 		return normText
 	})
 	segContent := strings.Join(append(tokenizedText, tokenizedNormalizedText...), " ")
-	logger.Infof("New segment content: %s", segContent)
+	logger.Infof("New segment content: %s", segContent) // TODO remove debug log after finished
 	requestParam := dao.NewTextChunkParams{
 		DocumentID: docId,
 		Content:    text,
@@ -293,6 +334,28 @@ func (c *Controller) createTextChunks(ctx context.Context, docId string, tx *sql
 		SegContent: newText.SegContent,
 	}); err != nil {
 		return nil, err
+	}
+	for modelId, graph := range c.embeddingIndexes {
+		model := c.embeddingModels[modelId]
+		embeddings, err := model.Embed(ctx, []string{text})
+		if err != nil {
+			return nil, err
+		}
+		if len(embeddings) != 1 {
+			return nil, fmt.Errorf("embedding model returned unexpected number of embeddings: %d", len(embeddings))
+		}
+		graph.Add(hnsw.Node[string]{
+			Key:   newText.ID,
+			Value: embeddings[0],
+		})
+		err = queries.NewTextEmbedding(ctx, dao.NewTextEmbeddingParams{
+			TextChunkID: newText.ID,
+			ModelID:     modelId,
+			Vector:      utils.ConvertFloat32ArrayToBytes(embeddings[0]),
+		})
+		if err != nil {
+			return nil, err
+		}
 	}
 	return &newText, nil
 }
@@ -395,5 +458,75 @@ func (c *Controller) SimpleSearch(echoCtx echo.Context) error {
 		return handleInternalError(echoCtx, err)
 	}
 
+	return echoCtx.JSON(http.StatusOK, results)
+}
+
+type ANNSearchTextChunkResult struct {
+	ID         string
+	DocumentID string
+	Content    string
+	CreatedAt  int64
+}
+
+func (c *Controller) ANNSearch(echoCtx echo.Context) error {
+	modelId := echoCtx.Param("model_id")
+	query := echoCtx.QueryParam("q")
+	nDocParam := echoCtx.QueryParam("n")
+	if query == "" {
+		return handleGenericError(echoCtx, echo.NewHTTPError(http.StatusBadRequest, "query parameter 'q' is required"), http.StatusBadRequest)
+	}
+	nDoc, err := strconv.Atoi(nDocParam)
+	if err != nil || nDoc <= 0 {
+		nDoc = 10
+	}
+	ctx := echoCtx.Request().Context()
+	idx, ok := c.embeddingIndexes[modelId]
+	model, okModel := c.embeddingModels[modelId]
+	if !ok {
+		return handleGenericError(echoCtx, fmt.Errorf("embedding index '%s' not found", modelId), http.StatusNotFound)
+	}
+	if !okModel {
+		return handleGenericError(echoCtx, fmt.Errorf("embedding model '%s' not found", modelId), http.StatusNotFound)
+	}
+	queryEmbedding, err := model.Embed(ctx, []string{query})
+	if err != nil {
+		return handleInternalError(echoCtx, err)
+	}
+	if len(queryEmbedding) != 1 {
+		return handleGenericError(echoCtx, fmt.Errorf("embedding model returned unexpected number of embeddings: %d", len(queryEmbedding)), http.StatusInternalServerError)
+	}
+	var ids = lo.Map(idx.Search(queryEmbedding[0], nDoc), func(item hnsw.Node[string], index int) any {
+		return item.Key
+	})
+	sqlStat := fmt.Sprintf(
+		"SELECT * FROM text_chunk WHERE id IN (%s)", strings.Join(
+			lo.Map(ids, func(item any, index int) string {
+				return "?"
+			}),
+			",",
+		),
+	)
+	rows, err := c.db.QueryContext(ctx, sqlStat, ids...)
+	if err != nil {
+		return handleInternalError(echoCtx, err)
+	}
+	defer func(rows *sql.Rows) {
+		err := rows.Close()
+		if err != nil {
+			logger.WithError(err).Error("Failed to close rows")
+		}
+	}(rows)
+
+	results := make([]dao.TextChunk, 0) // TODO add score to result, remove unnecessary fields
+	for rows.Next() {
+		var item dao.TextChunk
+		if err := rows.Scan(&item.ID, &item.DocumentID, &item.Content, &item.SegContent, &item.CreatedAt); err != nil {
+			return handleInternalError(echoCtx, err)
+		}
+		results = append(results, item)
+	}
+	if err := rows.Err(); err != nil {
+		return handleInternalError(echoCtx, err)
+	}
 	return echoCtx.JSON(http.StatusOK, results)
 }

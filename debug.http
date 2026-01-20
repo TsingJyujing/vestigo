@@ -161,7 +161,7 @@ Content-Type: application/json
 
 ### Simple Search - Default Limit (100)
 
-GET http://localhost:8080/api/v1/search/simple?q=山
+GET http://localhost:8080/api/v1/search/simple?q=爸爸
 
 ### Simple Search - 联邦
 
@@ -190,3 +190,6 @@ GET http://localhost:8080/api/v1/search/simple?q=山&n=10
 ### Simple Search with Large Limit n=1000
 
 GET http://localhost:8080/api/v1/search/simple?q=星&n=1000
+
+### ANN Search - Default Limit (10)
+POST http://localhost:8080/api/v1/search/ann/ollama-qwen3-embedding-0.6b?q=三国时期的故事

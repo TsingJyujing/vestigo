@@ -36,3 +36,6 @@ CREATE TABLE IF NOT EXISTS text_embedding
 
 CREATE INDEX IF NOT EXISTS idx_text_embedding_model_id
     ON text_embedding (model_id);
+
+CREATE INDEX IF NOT EXISTS idx_text_embedding_text_chunk_id
+    ON text_embedding (text_chunk_id);
