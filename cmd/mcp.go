@@ -58,10 +58,11 @@ func (v VestigoMCP) SearchDocuments(ctx context.Context, req *mcp.CallToolReques
 	}
 	return nil, SearchOutput{Results: result}, nil
 }
+
 func NewMcpCommand() *cobra.Command {
 	var vestigoEndpoint string
 
-	var mcpCommand = &cobra.Command{
+	mcpCommand := &cobra.Command{
 		Use:   "mcp",
 		Short: "Starting MCP server",
 		Run: func(cmd *cobra.Command, args []string) {

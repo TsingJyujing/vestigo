@@ -23,7 +23,7 @@ func LoadEmbeddingModel(modelType string, config map[string]interface{}) (BaseEm
 		if err != nil {
 			return nil, err
 		}
-		var ollamaModelInfo = OllamaModelInfo{}
+		ollamaModelInfo := OllamaModelInfo{}
 		err = json.Unmarshal(jsonData, &ollamaModelInfo)
 		if err != nil {
 			return nil, err

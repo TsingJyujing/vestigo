@@ -55,7 +55,7 @@ func NewController(db *sql.DB, embeddingModels map[string]models.BaseEmbeddingMo
 		return nil, err
 	}
 	embeddingIndexes := make(map[string]*hnsw.SavedGraph[string])
-	for modeName, _ := range embeddingModels {
+	for modeName := range embeddingModels {
 		// TODO check embedding/...
 		graph, err := hnsw.LoadSavedGraph[string](filepath.Join(embeddingSavePath, fmt.Sprintf("%s.embed", modeName)))
 		// TODO Set parameters, cosine/M/...
@@ -495,7 +495,7 @@ func (c *Controller) ANNSearch(echoCtx echo.Context) error {
 	if len(queryEmbedding) != 1 {
 		return handleGenericError(echoCtx, fmt.Errorf("embedding model returned unexpected number of embeddings: %d", len(queryEmbedding)), http.StatusInternalServerError)
 	}
-	var ids = lo.Map(idx.Search(queryEmbedding[0], nDoc), func(item hnsw.Node[string], index int) any {
+	ids := lo.Map(idx.Search(queryEmbedding[0], nDoc), func(item hnsw.Node[string], index int) any {
 		return item.Key
 	})
 	sqlStat := fmt.Sprintf(
