@@ -530,3 +530,11 @@ func (c *Controller) ANNSearch(echoCtx echo.Context) error {
 	}
 	return echoCtx.JSON(http.StatusOK, results)
 }
+
+func (c Controller) ListEmbeddingModels(echoCtx echo.Context) error {
+	models := make([]string, 0, len(c.embeddingModels))
+	for modelId := range c.embeddingModels {
+		models = append(models, modelId)
+	}
+	return echoCtx.JSON(http.StatusOK, models)
+}

@@ -8,3 +8,6 @@ start_server: generate_sql
 build-binary: generate_sql
 	mkdir -p "build"
 	go build -o build/vestigo main.go
+
+format:
+	gofumpt -l -w .

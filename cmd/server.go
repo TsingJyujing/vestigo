@@ -134,6 +134,7 @@ var serverCommand = &cobra.Command{
 		searchGroup := apiGroup.Group("/search")
 		searchGroup.GET("/simple", c.SimpleSearch)
 		searchGroup.GET("/ann/:model_id", c.ANNSearch)
+		searchGroup.GET("/models", c.ListEmbeddingModels)
 
 		// Start server in a goroutine
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
