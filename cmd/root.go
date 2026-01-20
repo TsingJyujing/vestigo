@@ -3,11 +3,15 @@ package cmd
 import (
 	"os"
 
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
+var logger = logrus.New()
+
 func init() {
 	rootCmd.AddCommand(serverCommand)
+	rootCmd.AddCommand(NewMcpCommand())
 }
 
 var rootCmd = &cobra.Command{

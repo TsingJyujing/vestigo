@@ -13,7 +13,6 @@ import (
 	"github.com/labstack/echo-contrib/echoprometheus"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
-	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/tsingjyujing/vestigo/config"
@@ -22,8 +21,6 @@ import (
 	"github.com/tsingjyujing/vestigo/utils"
 	_ "modernc.org/sqlite"
 )
-
-var logger = logrus.New()
 
 var configFile string
 
@@ -136,7 +133,7 @@ var serverCommand = &cobra.Command{
 		// Query API
 		searchGroup := apiGroup.Group("/search")
 		searchGroup.GET("/simple", c.SimpleSearch)
-		searchGroup.POST("/ann/:model_id", c.ANNSearch)
+		searchGroup.GET("/ann/:model_id", c.ANNSearch)
 
 		// Start server in a goroutine
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

@@ -401,12 +401,12 @@ func (c *Controller) DeleteTextChunk(echoCtx echo.Context) error {
 }
 
 type SearchResultItem struct {
-	TextChunkID string  `json:"text_chunk_id"`
-	Content     string  `json:"content"`
-	DocumentID  string  `json:"document_id"`
-	Title       string  `json:"title"`
-	Description string  `json:"description"`
-	Rank        float64 `json:"rank"`
+	TextChunkID string  `json:"text_chunk_id" jsonschema:"the ID of the text chunk"`
+	Content     string  `json:"content" jsonschema:"the content of the text chunk"`
+	DocumentID  string  `json:"document_id" jsonschema:"the ID of the document"`
+	Title       string  `json:"title" jsonschema:"the title of the document"`
+	Description string  `json:"description" jsonschema:"the description of the document"`
+	Rank        float64 `json:"rank" jsonschema:"the rank score of the search result"`
 }
 
 func (c *Controller) SimpleSearch(echoCtx echo.Context) error {
@@ -417,7 +417,7 @@ func (c *Controller) SimpleSearch(echoCtx echo.Context) error {
 	}
 	nDoc, err := strconv.Atoi(echoCtx.QueryParam("n"))
 	if err != nil || nDoc <= 0 {
-		nDoc = 100
+		nDoc = 10
 	}
 
 	rows, err := c.db.QueryContext(ctx, `
