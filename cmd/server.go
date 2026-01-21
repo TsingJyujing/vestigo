@@ -44,7 +44,7 @@ func readConfig() (*viper.Viper, *config.Envelope) {
 	logger.Infof("Using viperInstance file: %s", viperInstance.ConfigFileUsed())
 	// Set default values
 	viperInstance.SetDefault("server.address", ":8080")
-	viperInstance.SetDefault("server.db", "db.sqlite")
+	viperInstance.SetDefault("server.database", "db.sqlite")
 	viperInstance.SetDefault("embedding_save_path", "./data/embed/")
 	envelope, err := config.LoadConfigFromFile(viperInstance.ConfigFileUsed())
 	if err != nil {
@@ -61,7 +61,7 @@ var serverCommand = &cobra.Command{
 		goCtx := cmd.Context()
 		viperInstance, config := readConfig()
 		// Create controller
-		db, err := sql.Open("sqlite", viperInstance.GetString("server.db"))
+		db, err := sql.Open("sqlite", viperInstance.GetString("server.database"))
 		if err != nil {
 			logger.WithError(err).Fatal("Failed to open database")
 		}
