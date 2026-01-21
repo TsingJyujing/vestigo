@@ -1,6 +1,6 @@
 server:
   address: ":8080"
-  database: "db.sqlite"
+  database: "data/db.sqlite"
   # tokens: []  # Empty list - no authentication (default)
   # tokens:     # Example with authentication enabled
   #   - "your-secret-token-1"

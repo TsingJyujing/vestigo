@@ -145,7 +145,7 @@ func (c *Controller) NewDocument(echoCtx echo.Context) error {
 			logger.WithError(err).Error("failed to summarize document texts")
 		} else {
 			param.Texts = append(param.Texts, summarizedText)
-			logger.WithField("texts", summarizedText).Info("summarized document texts") // TODO remove debug log after finished
+			logger.WithField("texts", summarizedText).Debugf("summarized document texts")
 		}
 	}
 
@@ -364,7 +364,7 @@ func (c *Controller) createTextChunks(ctx context.Context, docId string, tx *sql
 		return normText
 	})
 	segContent := strings.Join(append(tokenizedText, tokenizedNormalizedText...), " ")
-	logger.Infof("New segment content: %s", segContent) // TODO remove debug log after finished
+	logger.Debugf("New segment content: %s", segContent)
 	requestParam := dao.NewTextChunkParams{
 		DocumentID: docId,
 		Content:    text,

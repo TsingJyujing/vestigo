@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -48,6 +49,7 @@ func (v VestigoMCP) SearchDocuments(ctx context.Context, req *mcp.CallToolReques
 	if input.Model != "BM25" {
 		searchApi = "/api/v1/search/ann/" + input.Model
 	}
+
 	searchUrl, err := v.GetUrl(searchApi, map[string]string{
 		"q": input.Query,
 		"n": strconv.Itoa(input.Count),
@@ -64,7 +66,12 @@ func (v VestigoMCP) SearchDocuments(ctx context.Context, req *mcp.CallToolReques
 	if err != nil {
 		return nil, SearchOutput{}, err
 	}
-	defer resp.Body.Close()
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			logger.WithError(err).Error("failed to close response body")
+		}
+	}(resp.Body)
 	// Parse response
 	var result []controller.SearchResultItem
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
@@ -111,13 +118,11 @@ type GetDocumentInput struct {
 }
 
 type GetDocumentOutput struct {
-	Document controller.DocumentWithChunks `json:"document" jsonschema:"the retrieved document with optional text chunks"`
+	Document controller.DocumentWithChunks `json:"document" jsonschema:"the retrieved full document by ID"`
 }
 
 func (v VestigoMCP) GetDocument(ctx context.Context, req *mcp.CallToolRequest, input GetDocumentInput) (*mcp.CallToolResult, GetDocumentOutput, error) {
-	getDocUrl, err := v.GetUrl("/api/v1/doc/"+input.DocumentID, map[string]string{
-		"with_text_chunks": "true",
-	})
+	getDocUrl, err := v.GetUrl("/api/v1/doc/"+input.DocumentID, map[string]string{"with_texts": "true"})
 	if err != nil {
 		return nil, GetDocumentOutput{}, err
 	}

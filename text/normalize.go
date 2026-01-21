@@ -1,6 +1,8 @@
 package text
 
 import (
+	"strings"
+
 	"golang.org/x/text/unicode/norm"
 
 	"github.com/teamlint/opencc"
@@ -57,5 +59,5 @@ func (n *CJKNormalizer) Normalize(text string) (string, error) {
 			return "", err
 		}
 	}
-	return s, nil
+	return strings.ToLower(s), nil
 }

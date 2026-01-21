@@ -24,9 +24,6 @@ func NewGSETokenizer(filterStopWord bool) (*GSETokenizer, error) {
 		filterStopWord: filterStopWord,
 	}
 
-	// Enable alphanumeric recognition
-	t.seg.AlphaNum = true
-
 	// Load Japanese dictionary first
 	if err := t.seg.LoadDictEmbed("ja"); err != nil {
 		return nil, err
