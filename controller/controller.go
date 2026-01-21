@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -108,6 +109,14 @@ func handleInternalError(echoCtx echo.Context, err error) error {
 	return handleGenericError(echoCtx, err, http.StatusInternalServerError)
 }
 
+func returnJsonResponse(echoCtx echo.Context, data any, status int) error {
+	jsonString, err := json.Marshal(data)
+	if err != nil {
+		return handleInternalError(echoCtx, err)
+	}
+	return echoCtx.JSONBlob(status, jsonString)
+}
+
 type NewDocumentParams struct {
 	ID          string                 `json:"id"`
 	Title       string                 `json:"title"`
@@ -197,17 +206,42 @@ func (c *Controller) NewDocument(echoCtx echo.Context) error {
 	return echoCtx.JSON(http.StatusCreated, map[string]string{"status": "ok"})
 }
 
+type Document struct {
+	ID          string         `json:"id"`
+	Title       string         `json:"title"`
+	Description string         `json:"description"`
+	Data        map[string]any `json:"data"`
+	CreatedAt   int64          `json:"created_at"`
+}
 type DocumentWithChunks struct {
-	dao.Document
+	Document
 	Texts []dao.TextChunk `json:"texts,omitempty"`
 }
 
 func (c *Controller) GetDocument(echoCtx echo.Context) error {
 	ctx := echoCtx.Request().Context()
 	docId := echoCtx.Param("doc_id")
-	doc, err := c.queries.GetDocument(ctx, docId)
+	// unquote docId
+	docId, err := url.QueryUnescape(docId)
+	if err != nil {
+		return handleGenericError(echoCtx, err, http.StatusBadRequest)
+	}
+	row, err := c.queries.GetDocument(ctx, docId)
 	if err != nil {
 		return handleSQLError(echoCtx, err)
+	}
+	// Convert data JSON string to map
+	dataMap := make(map[string]any)
+	if err := json.Unmarshal([]byte(row.Data), &dataMap); err != nil {
+		return handleInternalError(echoCtx, err)
+	}
+	// Prepare document response
+	document := Document{
+		ID:          row.ID,
+		Title:       row.Title,
+		Description: row.Description,
+		Data:        dataMap,
+		CreatedAt:   row.CreatedAt,
 	}
 
 	// Check if with_chunks parameter is set
@@ -220,14 +254,14 @@ func (c *Controller) GetDocument(echoCtx echo.Context) error {
 		}
 
 		// Return document with chunks
-		response := DocumentWithChunks{
-			Document: doc,
+		documentWithChunks := DocumentWithChunks{
+			Document: document,
 			Texts:    texts,
 		}
-		return echoCtx.JSON(http.StatusOK, response)
+		return returnJsonResponse(echoCtx, documentWithChunks, http.StatusOK)
 	}
 	// Return document without chunks
-	return echoCtx.JSON(http.StatusOK, doc)
+	return returnJsonResponse(echoCtx, document, http.StatusOK)
 }
 
 // deleteDocumentInternal deletes a document and all related text chunks / embeddings
@@ -274,6 +308,14 @@ func (c *Controller) DeleteDocument(echoCtx echo.Context) error {
 	return echoCtx.JSON(http.StatusOK, map[string]string{"status": "ok"})
 }
 
+type TextChunk struct {
+	ID         string `json:"id"`
+	DocumentID string `json:"document_id"`
+	Content    string `json:"content"`
+	SegContent string `json:"seg_content"`
+	CreatedAt  int64  `json:"created_at"`
+}
+
 func (c *Controller) NewTextChunk(echoCtx echo.Context) error {
 	ctx := echoCtx.Request().Context()
 	docId := echoCtx.Param("doc_id")
@@ -287,7 +329,7 @@ func (c *Controller) NewTextChunk(echoCtx echo.Context) error {
 	if err := echoCtx.Bind(&param); err != nil {
 		return handleGenericError(echoCtx, err, http.StatusBadRequest)
 	}
-	textChunk, err := utils.WithTx(
+	row, err := utils.WithTx(
 		ctx,
 		c.db,
 		nil,
@@ -298,7 +340,13 @@ func (c *Controller) NewTextChunk(echoCtx echo.Context) error {
 	if err != nil {
 		return handleSQLError(echoCtx, err)
 	}
-	return echoCtx.JSON(http.StatusCreated, textChunk)
+	return echoCtx.JSON(http.StatusCreated, TextChunk{
+		ID:         row.ID,
+		DocumentID: row.DocumentID,
+		Content:    row.Content,
+		SegContent: row.SegContent,
+		CreatedAt:  row.CreatedAt,
+	})
 }
 
 func (c *Controller) createTextChunks(ctx context.Context, docId string, tx *sql.Tx, text string) (*dao.TextChunk, error) {
@@ -363,11 +411,17 @@ func (c *Controller) createTextChunks(ctx context.Context, docId string, tx *sql
 func (c *Controller) GetTextChunk(echoCtx echo.Context) error {
 	ctx := echoCtx.Request().Context()
 	textId := echoCtx.Param("text_id")
-	textChunk, err := c.queries.GetTextChunk(ctx, textId)
+	row, err := c.queries.GetTextChunk(ctx, textId)
 	if err != nil {
 		return handleSQLError(echoCtx, err)
 	}
-	return echoCtx.JSON(http.StatusOK, textChunk)
+	return echoCtx.JSON(http.StatusOK, TextChunk{
+		ID:         row.ID,
+		DocumentID: row.DocumentID,
+		Content:    row.Content,
+		SegContent: row.SegContent,
+		CreatedAt:  row.CreatedAt,
+	})
 }
 
 func (c *Controller) DeleteTextChunk(echoCtx echo.Context) error {
@@ -531,10 +585,10 @@ func (c *Controller) ANNSearch(echoCtx echo.Context) error {
 	return echoCtx.JSON(http.StatusOK, results)
 }
 
-func (c Controller) ListEmbeddingModels(echoCtx echo.Context) error {
-	models := make([]string, 0, len(c.embeddingModels))
+func (c *Controller) ListEmbeddingModels(echoCtx echo.Context) error {
+	modelIds := make([]string, 0, len(c.embeddingModels))
 	for modelId := range c.embeddingModels {
-		models = append(models, modelId)
+		modelIds = append(modelIds, modelId)
 	}
-	return echoCtx.JSON(http.StatusOK, models)
+	return echoCtx.JSON(http.StatusOK, modelIds)
 }
