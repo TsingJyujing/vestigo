@@ -10,13 +10,11 @@ VALUES (?, ?, ?, ?);
 -- name: GetDocument :one
 SELECT *
 FROM document
-WHERE id = ?
-LIMIT 1;
+WHERE id = ? LIMIT 1;
 
 -- name: NewTextChunk :one
 INSERT INTO text_chunk (id, document_id, content, seg_content)
-VALUES (?, ?, ?, ?)
-RETURNING *;
+VALUES (?, ?, ?, ?) RETURNING *;
 
 -- name: ListTextChunksByDocumentID :many
 SELECT *
@@ -26,8 +24,7 @@ WHERE document_id = ?;
 -- name: GetTextChunk :one
 SELECT *
 FROM text_chunk
-WHERE id = ?
-LIMIT 1;
+WHERE id = ? LIMIT 1;
 
 -- name: DeleteTextChunk :exec
 DELETE
@@ -35,36 +32,45 @@ FROM text_chunk
 WHERE id = ?;
 
 -- name: DeleteTextEmbeddingsByDocumentID :exec
-DELETE FROM text_embedding 
-WHERE text_chunk_id IN (
-    SELECT id FROM text_chunk tc
-    WHERE tc.document_id = ?
-);
+DELETE
+FROM text_embedding
+WHERE text_chunk_id IN (SELECT id
+                        FROM text_chunk tc
+                        WHERE tc.document_id = ?);
 
 -- name: DeleteTextChunkFTSByDocumentID :exec
-DELETE FROM text_chunk_fts 
-WHERE id IN (
-    SELECT id FROM text_chunk tc 
-    WHERE tc.document_id = ?
-);
+DELETE
+FROM text_chunk_fts
+WHERE id IN (SELECT id
+             FROM text_chunk tc
+             WHERE tc.document_id = ?);
 
 -- name: DeleteTextChunksByDocumentID :exec
-DELETE FROM text_chunk 
+DELETE
+FROM text_chunk
 WHERE document_id = ?;
 
 -- name: DeleteTextEmbeddingsByTextChunkID :exec
-DELETE FROM text_embedding 
+DELETE
+FROM text_embedding
 WHERE text_chunk_id = ?;
 
 -- name: DeleteTextChunkFTSByID :exec
-DELETE FROM text_chunk_fts 
+DELETE
+FROM text_chunk_fts
 WHERE id = ?;
 
 -- name: InsertTextChunkFTS :exec
-INSERT INTO text_chunk_fts (id, seg_content) 
+INSERT INTO text_chunk_fts (id, seg_content)
 VALUES (?, ?);
 
 -- name: NewTextEmbedding :exec
 INSERT INTO text_embedding (model_id, text_chunk_id, vector)
 VALUES (?, ?, ?);
 
+-- name: ListTextChunkIdByDocumentID :many
+SELECT id
+FROM text_chunk
+WHERE document_id = ?;
+
+-- name: List

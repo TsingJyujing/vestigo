@@ -32,11 +32,11 @@ func (q *Queries) DeleteTextChunk(ctx context.Context, id string) error {
 }
 
 const deleteTextChunkFTSByDocumentID = `-- name: DeleteTextChunkFTSByDocumentID :exec
-DELETE FROM text_chunk_fts 
-WHERE id IN (
-    SELECT id FROM text_chunk tc 
-    WHERE tc.document_id = ?
-)
+DELETE
+FROM text_chunk_fts
+WHERE id IN (SELECT id
+             FROM text_chunk tc
+             WHERE tc.document_id = ?)
 `
 
 func (q *Queries) DeleteTextChunkFTSByDocumentID(ctx context.Context, documentID string) error {
@@ -45,7 +45,8 @@ func (q *Queries) DeleteTextChunkFTSByDocumentID(ctx context.Context, documentID
 }
 
 const deleteTextChunkFTSByID = `-- name: DeleteTextChunkFTSByID :exec
-DELETE FROM text_chunk_fts 
+DELETE
+FROM text_chunk_fts
 WHERE id = ?
 `
 
@@ -55,7 +56,8 @@ func (q *Queries) DeleteTextChunkFTSByID(ctx context.Context, id string) error {
 }
 
 const deleteTextChunksByDocumentID = `-- name: DeleteTextChunksByDocumentID :exec
-DELETE FROM text_chunk 
+DELETE
+FROM text_chunk
 WHERE document_id = ?
 `
 
@@ -65,11 +67,11 @@ func (q *Queries) DeleteTextChunksByDocumentID(ctx context.Context, documentID s
 }
 
 const deleteTextEmbeddingsByDocumentID = `-- name: DeleteTextEmbeddingsByDocumentID :exec
-DELETE FROM text_embedding 
-WHERE text_chunk_id IN (
-    SELECT id FROM text_chunk tc
-    WHERE tc.document_id = ?
-)
+DELETE
+FROM text_embedding
+WHERE text_chunk_id IN (SELECT id
+                        FROM text_chunk tc
+                        WHERE tc.document_id = ?)
 `
 
 func (q *Queries) DeleteTextEmbeddingsByDocumentID(ctx context.Context, documentID string) error {
@@ -78,7 +80,8 @@ func (q *Queries) DeleteTextEmbeddingsByDocumentID(ctx context.Context, document
 }
 
 const deleteTextEmbeddingsByTextChunkID = `-- name: DeleteTextEmbeddingsByTextChunkID :exec
-DELETE FROM text_embedding 
+DELETE
+FROM text_embedding
 WHERE text_chunk_id = ?
 `
 
@@ -90,8 +93,7 @@ func (q *Queries) DeleteTextEmbeddingsByTextChunkID(ctx context.Context, textChu
 const getDocument = `-- name: GetDocument :one
 SELECT id, title, description, data, created_at
 FROM document
-WHERE id = ?
-LIMIT 1
+WHERE id = ? LIMIT 1
 `
 
 func (q *Queries) GetDocument(ctx context.Context, id string) (Document, error) {
@@ -110,8 +112,7 @@ func (q *Queries) GetDocument(ctx context.Context, id string) (Document, error) 
 const getTextChunk = `-- name: GetTextChunk :one
 SELECT id, document_id, content, seg_content, created_at
 FROM text_chunk
-WHERE id = ?
-LIMIT 1
+WHERE id = ? LIMIT 1
 `
 
 func (q *Queries) GetTextChunk(ctx context.Context, id string) (TextChunk, error) {
@@ -128,7 +129,7 @@ func (q *Queries) GetTextChunk(ctx context.Context, id string) (TextChunk, error
 }
 
 const insertTextChunkFTS = `-- name: InsertTextChunkFTS :exec
-INSERT INTO text_chunk_fts (id, seg_content) 
+INSERT INTO text_chunk_fts (id, seg_content)
 VALUES (?, ?)
 `
 
@@ -140,6 +141,35 @@ type InsertTextChunkFTSParams struct {
 func (q *Queries) InsertTextChunkFTS(ctx context.Context, arg InsertTextChunkFTSParams) error {
 	_, err := q.db.ExecContext(ctx, insertTextChunkFTS, arg.ID, arg.SegContent)
 	return err
+}
+
+const listTextChunkIdByDocumentID = `-- name: ListTextChunkIdByDocumentID :many
+SELECT id
+FROM text_chunk
+WHERE document_id = ?
+`
+
+func (q *Queries) ListTextChunkIdByDocumentID(ctx context.Context, documentID string) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listTextChunkIdByDocumentID, documentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listTextChunksByDocumentID = `-- name: ListTextChunksByDocumentID :many
@@ -201,8 +231,7 @@ func (q *Queries) NewDocument(ctx context.Context, arg NewDocumentParams) error 
 
 const newTextChunk = `-- name: NewTextChunk :one
 INSERT INTO text_chunk (id, document_id, content, seg_content)
-VALUES (?, ?, ?, ?)
-RETURNING id, document_id, content, seg_content, created_at
+VALUES (?, ?, ?, ?) RETURNING id, document_id, content, seg_content, created_at
 `
 
 type NewTextChunkParams struct {

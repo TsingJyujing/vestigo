@@ -163,7 +163,7 @@ func (c *Controller) NewDocument(echoCtx echo.Context) error {
 				_, err := queries.GetDocument(ctx, param.ID)
 				if err == nil {
 					// Document exists, delete it using the shared internal function
-					if err := deleteDocumentInternal(ctx, queries, param.ID); err != nil {
+					if err := c.deleteDocumentInternal(ctx, queries, param.ID); err != nil {
 						return 0, err
 					}
 					logger.WithField("document_id", param.ID).Info("Deleted existing document for overwrite")
@@ -267,7 +267,11 @@ func (c *Controller) GetDocument(echoCtx echo.Context) error {
 
 // deleteDocumentInternal deletes a document and all related text chunks / embeddings
 // This is an internal helper function used by both DeleteDocument and NewDocument (with overwrite)
-func deleteDocumentInternal(ctx context.Context, queries *dao.Queries, docId string) error {
+func (c *Controller) deleteDocumentInternal(ctx context.Context, queries *dao.Queries, docId string) error {
+	textChunkIds, err := queries.ListTextChunkIdByDocumentID(ctx, docId)
+	if err != nil {
+		return err
+	}
 	// Delete text embeddings associated with this document's chunks
 	if err := queries.DeleteTextEmbeddingsByDocumentID(ctx, docId); err != nil {
 		return err
@@ -284,6 +288,9 @@ func deleteDocumentInternal(ctx context.Context, queries *dao.Queries, docId str
 	if err := queries.DeleteDocument(ctx, docId); err != nil {
 		return err
 	}
+	for _, textChunkId := range textChunkIds {
+		c.deleteTextChunkFromIndex(textChunkId)
+	}
 	return nil
 }
 
@@ -296,8 +303,7 @@ func (c *Controller) DeleteDocument(echoCtx echo.Context) error {
 		c.db,
 		nil,
 		func(tx *sql.Tx) (any, error) {
-			queries := dao.New(tx)
-			if err := deleteDocumentInternal(ctx, queries, docId); err != nil {
+			if err := c.deleteDocumentInternal(ctx, dao.New(tx), docId); err != nil {
 				return nil, err
 			}
 			return nil, nil
@@ -425,6 +431,14 @@ func (c *Controller) GetTextChunk(echoCtx echo.Context) error {
 	})
 }
 
+func (c *Controller) deleteTextChunkFromIndex(id string) {
+	for modelId, graph := range c.embeddingIndexes {
+		if !graph.Delete(id) {
+			logger.Errorf("Failed to delete text chunk %s from embedding index %s", id, modelId)
+		}
+	}
+}
+
 func (c *Controller) DeleteTextChunk(echoCtx echo.Context) error {
 	ctx := echoCtx.Request().Context()
 	textId := echoCtx.Param("text_id")
@@ -446,6 +460,7 @@ func (c *Controller) DeleteTextChunk(echoCtx echo.Context) error {
 			if err := queries.DeleteTextChunk(ctx, textId); err != nil {
 				return nil, err
 			}
+			c.deleteTextChunkFromIndex(textId)
 			return nil, nil
 		},
 	)
