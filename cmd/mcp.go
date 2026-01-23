@@ -54,14 +54,14 @@ func errorResponseHandler(resp http.Response) (CommonOutput, error) {
 }
 
 type SearchInput struct {
-	Model string `json:"model" jsonschema:"the name of the model to search"`
-	Query string `json:"query" jsonschema:"the query to search for"`
-	Count int    `json:"n" jsonschema:"the number of results to return"`
+	Model string `json:"model" jsonschema:"the name of the model for searching"`
+	Query string `json:"query" jsonschema:"the query to search for, while using ANN model, it can be a sentence, for BM25 model, use space to separate keywords for AND logic and use OR to separate keywords for OR logic"`
+	Count int    `json:"n" jsonschema:"the number of results to return for each model"`
 }
 
 type SearchOutput struct {
 	CommonOutput
-	Results []controller.SearchResultItem `json:"results" jsonschema:"the search results"`
+	controller.SearchResponse
 }
 
 func (v VestigoMCP) getUrl(relativePath string, parameters map[string]string) (*url.URL, error) {
@@ -81,11 +81,7 @@ func (v VestigoMCP) getUrl(relativePath string, parameters map[string]string) (*
 }
 
 func (v VestigoMCP) SearchDocuments(ctx context.Context, req *mcp.CallToolRequest, input SearchInput) (*mcp.CallToolResult, SearchOutput, error) {
-	searchApi := "/api/v1/search/simple"
-	if input.Model != "BM25" {
-		searchApi = "/api/v1/search/ann/" + input.Model
-	}
-	searchUrl, err := v.getUrl(searchApi, map[string]string{
+	searchUrl, err := v.getUrl(fmt.Sprintf("/api/v1/search/%s", input.Model), map[string]string{
 		"q": input.Query,
 		"n": strconv.Itoa(input.Count),
 	})
@@ -118,7 +114,7 @@ func (v VestigoMCP) SearchDocuments(ctx context.Context, req *mcp.CallToolReques
 		}, err
 	}
 	// Parse response
-	var result []controller.SearchResultItem
+	var result controller.SearchResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, SearchOutput{
 			CommonOutput: CommonOutput{
@@ -127,7 +123,7 @@ func (v VestigoMCP) SearchDocuments(ctx context.Context, req *mcp.CallToolReques
 			},
 		}, err
 	}
-	return nil, SearchOutput{Results: result, CommonOutput: commonOutput}, nil
+	return nil, SearchOutput{SearchResponse: result, CommonOutput: commonOutput}, nil
 }
 
 type ListModelInput struct {
@@ -140,7 +136,7 @@ type ListModelOutput struct {
 }
 
 func (v VestigoMCP) ListModels(ctx context.Context, req *mcp.CallToolRequest, input ListModelInput) (*mcp.CallToolResult, ListModelOutput, error) {
-	listModelUrl, err := v.getUrl("/api/v1/search/models", nil)
+	listModelUrl, err := v.getUrl("/api/v1/models", nil)
 	if err != nil {
 		return nil, ListModelOutput{
 			CommonOutput: CommonOutput{
@@ -252,7 +248,11 @@ func NewMcpCommand() *cobra.Command {
 				endpoint: *parsedURL,
 			}
 			server := mcp.NewServer(&mcp.Implementation{Name: "vestigo-mcp", Title: "MCP server for searching document from Vestigo", Version: "v1.0.0"}, nil)
-			mcp.AddTool(server, &mcp.Tool{Name: "search_documents", Description: "Search text chunks with query and model ID, will return text chunk and document ID"}, v.SearchDocuments)
+			mcp.AddTool(server, &mcp.Tool{
+				Name: "search_documents",
+				Description: "Search text chunks with query and model ID, will return text chunk and document ID, " +
+					"for accessing full document, we need to use get_document API",
+			}, v.SearchDocuments)
 			mcp.AddTool(server, &mcp.Tool{
 				Name: "list_models",
 				Description: "List available embedding models, BM25 is most basic & fastest one (but not embedding), for " +

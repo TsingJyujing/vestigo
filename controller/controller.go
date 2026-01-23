@@ -479,17 +479,7 @@ type SearchResultItem struct {
 	Score       float64 `json:"score" jsonschema:"the score score of the search result"`
 }
 
-func (c *Controller) SimpleSearch(echoCtx echo.Context) error {
-	ctx := echoCtx.Request().Context()
-	query := echoCtx.QueryParam("q")
-	if query == "" {
-		return handleGenericError(echoCtx, echo.NewHTTPError(http.StatusBadRequest, "query parameter 'q' is required"), http.StatusBadRequest)
-	}
-	nDoc, err := strconv.Atoi(echoCtx.QueryParam("n"))
-	if err != nil || nDoc <= 0 {
-		nDoc = 10
-	}
-
+func (c *Controller) searchWithBM25(ctx context.Context, query string, nDoc int) ([]SearchResultItem, error) {
 	rows, err := c.db.QueryContext(ctx, `
 		SELECT 
 			tc.id,
@@ -506,7 +496,7 @@ func (c *Controller) SimpleSearch(echoCtx echo.Context) error {
 		LIMIT ?
 	`, query, nDoc)
 	if err != nil {
-		return handleInternalError(echoCtx, err)
+		return nil, err
 	}
 	defer func(rows *sql.Rows) {
 		err := rows.Close()
@@ -519,45 +509,28 @@ func (c *Controller) SimpleSearch(echoCtx echo.Context) error {
 	for rows.Next() {
 		var item SearchResultItem
 		if err := rows.Scan(&item.TextChunkID, &item.Content, &item.DocumentID, &item.Title, &item.Description, &item.Score); err != nil {
-			return handleInternalError(echoCtx, err)
+			return nil, err
 		}
 		results = append(results, item)
 	}
 
 	if err := rows.Err(); err != nil {
-		return handleInternalError(echoCtx, err)
+		return nil, err
 	}
-	return echoCtx.JSON(http.StatusOK, results)
+	return results, nil
 }
 
-func (c *Controller) ANNSearch(echoCtx echo.Context) error {
-	modelId := echoCtx.Param("model_id")
-	query := echoCtx.QueryParam("q")
-	nDocParam := echoCtx.QueryParam("n")
-	if query == "" {
-		return handleGenericError(echoCtx, echo.NewHTTPError(http.StatusBadRequest, "query parameter 'q' is required"), http.StatusBadRequest)
-	}
-	nDoc, err := strconv.Atoi(nDocParam)
-	if err != nil || nDoc <= 0 {
-		nDoc = 10
-	}
-	ctx := echoCtx.Request().Context()
-	idx, ok := c.embeddingIndexes[modelId]
-	model, okModel := c.embeddingModels[modelId]
-	if !ok {
-		return handleGenericError(echoCtx, fmt.Errorf("embedding index '%s' not found", modelId), http.StatusNotFound)
-	}
-	if !okModel {
-		return handleGenericError(echoCtx, fmt.Errorf("embedding model '%s' not found", modelId), http.StatusNotFound)
-	}
+func (c *Controller) searchWithEmbeddingModel(ctx context.Context, modelId, query string, nDoc int) ([]SearchResultItem, error) {
+	index := c.embeddingIndexes[modelId]
+	model := c.embeddingModels[modelId]
 	queryEmbedding, err := model.Embed(ctx, []string{query})
 	if err != nil {
-		return handleInternalError(echoCtx, err)
+		return nil, err
 	}
 	if len(queryEmbedding) != 1 {
-		return handleGenericError(echoCtx, fmt.Errorf("embedding model returned unexpected number of embeddings: %d", len(queryEmbedding)), http.StatusInternalServerError)
+		return nil, fmt.Errorf("embedding model returned unexpected number of embeddings: %d", len(queryEmbedding))
 	}
-	searchResult := idx.SearchWithDistance(queryEmbedding[0], nDoc)
+	searchResult := index.SearchWithDistance(queryEmbedding[0], nDoc)
 	ids := lo.Map(searchResult, func(item hnsw.SearchResult[string], index int) any {
 		return item.Key
 	})
@@ -584,7 +557,7 @@ func (c *Controller) ANNSearch(echoCtx echo.Context) error {
 	)
 	rows, err := c.db.QueryContext(ctx, sqlStat, ids...)
 	if err != nil {
-		return handleInternalError(echoCtx, err)
+		return nil, err
 	}
 	defer func(rows *sql.Rows) {
 		err := rows.Close()
@@ -596,7 +569,7 @@ func (c *Controller) ANNSearch(echoCtx echo.Context) error {
 	for rows.Next() {
 		var item SearchResultItem
 		if err := rows.Scan(&item.TextChunkID, &item.Content, &item.DocumentID, &item.Title, &item.Description); err != nil {
-			return handleInternalError(echoCtx, err)
+			return nil, err
 		}
 		item.Score = -float64(distanceMap[item.TextChunkID])
 		results = append(results, item)
@@ -605,9 +578,46 @@ func (c *Controller) ANNSearch(echoCtx echo.Context) error {
 		return results[i].Score > results[j].Score
 	})
 	if err := rows.Err(); err != nil {
-		return handleInternalError(echoCtx, err)
+		return nil, err
 	}
-	return echoCtx.JSON(http.StatusOK, results)
+	return results, nil
+}
+
+type SearchResponse struct {
+	Results []SearchResultItem `json:"results"`
+}
+
+func (c *Controller) Search(echoCtx echo.Context) error {
+	ctx := echoCtx.Request().Context()
+	modelId := echoCtx.Param("model_id")
+	query := echoCtx.QueryParam("q")
+	nDocParam := echoCtx.QueryParam("n")
+	if query == "" {
+		return handleGenericError(echoCtx, echo.NewHTTPError(http.StatusBadRequest, "query parameter 'q' is required"), http.StatusBadRequest)
+	}
+	nDoc, err := strconv.Atoi(nDocParam)
+	if err != nil || nDoc <= 0 {
+		nDoc = 10
+	}
+	var results []SearchResultItem
+	if strings.ToLower(modelId) == "bm25" {
+		results, err = c.searchWithBM25(ctx, query, nDoc)
+		if err != nil {
+			return handleInternalError(echoCtx, err)
+		}
+	} else {
+		// Check if model exists
+		_, okModel := c.embeddingModels[modelId]
+		_, okAnnIndex := c.embeddingIndexes[modelId]
+		if !okModel || !okAnnIndex {
+			return handleGenericError(echoCtx, echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("model '%s' not found", modelId)), http.StatusBadRequest)
+		}
+		results, err = c.searchWithEmbeddingModel(ctx, modelId, query, nDoc)
+		if err != nil {
+			return handleInternalError(echoCtx, err)
+		}
+	}
+	return returnJsonResponse(echoCtx, SearchResponse{Results: results}, http.StatusOK)
 }
 
 func (c *Controller) ListEmbeddingModels(echoCtx echo.Context) error {

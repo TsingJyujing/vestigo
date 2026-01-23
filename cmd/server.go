@@ -120,7 +120,7 @@ var serverCommand = &cobra.Command{
 
 		// Document
 		documentGroup := apiGroup.Group("/doc")
-		documentGroup.POST("/", c.NewDocument)
+		documentGroup.POST("", c.NewDocument)
 		documentGroup.GET("/:doc_id", c.GetDocument)
 		documentGroup.DELETE("/:doc_id", c.DeleteDocument)
 		documentGroup.POST("/:doc_id/text", c.NewTextChunk)
@@ -131,10 +131,8 @@ var serverCommand = &cobra.Command{
 		textGroup.DELETE("/:text_id", c.DeleteTextChunk)
 
 		// Query API
-		searchGroup := apiGroup.Group("/search")
-		searchGroup.GET("/simple", c.SimpleSearch)
-		searchGroup.GET("/ann/:model_id", c.ANNSearch)
-		searchGroup.GET("/models", c.ListEmbeddingModels)
+		apiGroup.GET("/models", c.ListEmbeddingModels)
+		apiGroup.GET("/search/:model_id", c.Search)
 
 		// Start server in a goroutine
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
