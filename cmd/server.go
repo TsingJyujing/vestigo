@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/labstack/echo-contrib/echoprometheus"
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
+	"github.com/labstack/echo/v5"
+	"github.com/labstack/echo/v5/middleware"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/tsingjyujing/vestigo/config"
@@ -100,11 +100,10 @@ var serverCommand = &cobra.Command{
 		echoServer.Use(echoprometheus.NewMiddleware("resman"))
 		// Set routes
 		echoServer.GET("/metrics", echoprometheus.NewHandler())
-		echoServer.GET("/health", func(c echo.Context) error {
+		echoServer.GET("/health", func(c *echo.Context) error {
 			return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
 		})
-		echoServer.Use(middleware.CORS()) // Enable CORS for all origins
-
+		echoServer.Use(middleware.CORS("*"))
 		// RESTful API routes
 		apiGroup := echoServer.Group("/api/v1")
 		apiGroup.Use(middleware.RequestLogger())
@@ -137,12 +136,15 @@ var serverCommand = &cobra.Command{
 		// Start server in a goroutine
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
+		httpServer := &http.Server{
+			Addr:    viperInstance.GetString("server.address"),
+			Handler: echoServer,
+		}
 
 		go func() {
-			addr := viperInstance.GetString("server.address")
-			logger.Infof("Starting server on %s", addr)
-			if err := echoServer.Start(addr); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				logger.WithError(err).Error("Server start error")
+			logger.Infof("Starting server at %s", httpServer.Addr)
+			if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				logger.WithError(err).Error("failed to start server")
 			}
 		}()
 
@@ -154,8 +156,7 @@ var serverCommand = &cobra.Command{
 		// Graceful shutdown with timeout
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-
-		if err := echoServer.Shutdown(shutdownCtx); err != nil {
+		if err := httpServer.Shutdown(shutdownCtx); err != nil {
 			logger.WithError(err).Error("Server forced to shutdown")
 		}
 

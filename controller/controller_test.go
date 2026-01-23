@@ -8,7 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/tsingjyujing/vestigo/models"
@@ -128,8 +128,7 @@ func TestDocumentCRUDAndSearch(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, "/api/v1/doc/"+doc.ID, nil)
 			rec := httptest.NewRecorder()
 			c := e.NewContext(req, rec)
-			c.SetParamNames("doc_id")
-			c.SetParamValues(doc.ID)
+			c.SetPathValues([]echo.PathValue{{Name: "doc_id", Value: doc.ID}})
 
 			err := controller.GetDocument(c)
 			require.NoError(t, err)
@@ -139,8 +138,8 @@ func TestDocumentCRUDAndSearch(t *testing.T) {
 			var response map[string]interface{}
 			err = json.Unmarshal(rec.Body.Bytes(), &response)
 			require.NoError(t, err)
-			assert.Equal(t, doc.ID, response["ID"])
-			assert.Equal(t, doc.Title, response["Title"])
+			assert.Equal(t, doc.ID, response["id"])
+			assert.Equal(t, doc.Title, response["title"])
 		}
 	})
 
@@ -150,8 +149,7 @@ func TestDocumentCRUDAndSearch(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, "/api/v1/doc/"+doc.ID+"?with_texts=true", nil)
 			rec := httptest.NewRecorder()
 			c := e.NewContext(req, rec)
-			c.SetParamNames("doc_id")
-			c.SetParamValues(doc.ID)
+			c.SetPathValues([]echo.PathValue{{Name: "doc_id", Value: doc.ID}})
 
 			err := controller.GetDocument(c)
 			require.NoError(t, err)
@@ -161,8 +159,8 @@ func TestDocumentCRUDAndSearch(t *testing.T) {
 			var response map[string]interface{}
 			err = json.Unmarshal(rec.Body.Bytes(), &response)
 			require.NoError(t, err)
-			assert.Equal(t, doc.ID, response["ID"])
-			assert.Equal(t, doc.Title, response["Title"])
+			assert.Equal(t, doc.ID, response["id"])
+			assert.Equal(t, doc.Title, response["title"])
 
 			// Verify text_chunks field exists and is not empty
 			textChunks, exists := response["texts"]
@@ -188,17 +186,19 @@ func TestDocumentCRUDAndSearch(t *testing.T) {
 		}
 
 		for _, st := range searchTests {
-			req := httptest.NewRequest(http.MethodGet, "/api/v1/search/simple?q="+st.query, nil)
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/search/bm25?q="+st.query, nil)
 			rec := httptest.NewRecorder()
 			c := e.NewContext(req, rec)
+			c.SetPathValues([]echo.PathValue{{Name: "model_id", Value: "bm25"}})
 
-			err := controller.SimpleSearch(c)
+			err := controller.Search(c)
 			require.NoError(t, err)
 			assert.Equal(t, http.StatusOK, rec.Code)
 
-			var results []SearchResultItem
-			err = json.Unmarshal(rec.Body.Bytes(), &results)
+			var sr SearchResponse
+			err = json.Unmarshal(rec.Body.Bytes(), &sr)
 			require.NoError(t, err)
+			results := sr.Results
 			assert.GreaterOrEqual(t, len(results), st.minExpected, "Search for '%s' should return at least %d results", st.query, st.minExpected)
 
 			// Verify at least one result contains the expected text
@@ -222,8 +222,7 @@ func TestDocumentCRUDAndSearch(t *testing.T) {
 			req := httptest.NewRequest(http.MethodDelete, "/api/v1/doc/"+doc.ID, nil)
 			rec := httptest.NewRecorder()
 			c := e.NewContext(req, rec)
-			c.SetParamNames("doc_id")
-			c.SetParamValues(doc.ID)
+			c.SetPathValues([]echo.PathValue{{Name: "doc_id", Value: doc.ID}})
 
 			err := controller.DeleteDocument(c)
 			require.NoError(t, err)
@@ -237,8 +236,7 @@ func TestDocumentCRUDAndSearch(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, "/api/v1/doc/"+doc.ID, nil)
 			rec := httptest.NewRecorder()
 			c := e.NewContext(req, rec)
-			c.SetParamNames("doc_id")
-			c.SetParamValues(doc.ID)
+			c.SetPathValues([]echo.PathValue{{Name: "doc_id", Value: doc.ID}})
 
 			err := controller.GetDocument(c)
 			require.NoError(t, err)
@@ -248,18 +246,19 @@ func TestDocumentCRUDAndSearch(t *testing.T) {
 
 	// Step 6: Verify search returns no results after deletion
 	t.Run("SearchAfterDeletion", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/search/simple?q=山达尔星", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/search/bm25?q=山达尔星", nil)
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
+		c.SetPathValues([]echo.PathValue{{Name: "model_id", Value: "bm25"}})
 
-		err := controller.SimpleSearch(c)
+		err := controller.Search(c)
 		require.NoError(t, err)
 		assert.Equal(t, http.StatusOK, rec.Code)
 
-		var results []SearchResultItem
-		err = json.Unmarshal(rec.Body.Bytes(), &results)
+		var sr SearchResponse
+		err = json.Unmarshal(rec.Body.Bytes(), &sr)
 		require.NoError(t, err)
-		assert.Equal(t, 0, len(results), "Search should return no results after all documents are deleted")
+		assert.Equal(t, 0, len(sr.Results), "Search should return no results after all documents are deleted")
 	})
 }
 
@@ -298,114 +297,126 @@ func TestSearchWithLimitParameter(t *testing.T) {
 
 	// Test with default limit (should return all 10 results since default is 100)
 	t.Run("SearchWithDefaultLimit", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/search/simple?q=测试", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/search/bm25?q=测试", nil)
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
+		c.SetPathValues([]echo.PathValue{
+			{Name: "model_id", Value: "bm25"},
+		})
 
-		err := controller.SimpleSearch(c)
+		err := controller.Search(c)
 		require.NoError(t, err)
 		assert.Equal(t, http.StatusOK, rec.Code)
 
-		var results []SearchResultItem
-		err = json.Unmarshal(rec.Body.Bytes(), &results)
+		var result SearchResponse
+		err = json.Unmarshal(rec.Body.Bytes(), &result)
 		require.NoError(t, err)
-		assert.Equal(t, 10, len(results), "Should return all 10 results with default limit")
+		assert.Equal(t, 10, len(result.Results), "Should return all 10 results with default limit")
 	})
 
 	// Test with n=5 (should return exactly 5 results)
 	t.Run("SearchWithLimit5", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/search/simple?q=测试&n=5", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/search/bm25?q=测试&n=5", nil)
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
+		c.SetPathValues([]echo.PathValue{
+			{Name: "model_id", Value: "bm25"},
+		})
 
-		err := controller.SimpleSearch(c)
+		err := controller.Search(c)
 		require.NoError(t, err)
 		assert.Equal(t, http.StatusOK, rec.Code)
 
-		var results []SearchResultItem
-		err = json.Unmarshal(rec.Body.Bytes(), &results)
+		var result SearchResponse
+		err = json.Unmarshal(rec.Body.Bytes(), &result)
 		require.NoError(t, err)
-		assert.Equal(t, 5, len(results), "Should return exactly 5 results when n=5")
+		assert.Equal(t, 5, len(result.Results), "Should return exactly 5 results when n=5")
 	})
 
 	// Test with n=1 (should return exactly 1 result)
 	t.Run("SearchWithLimit1", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/search/simple?q=测试&n=1", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/search/bm25?q=测试&n=1", nil)
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
+		c.SetPathValues([]echo.PathValue{{Name: "model_id", Value: "bm25"}})
 
-		err := controller.SimpleSearch(c)
+		err := controller.Search(c)
 		require.NoError(t, err)
 		assert.Equal(t, http.StatusOK, rec.Code)
 
-		var results []SearchResultItem
-		err = json.Unmarshal(rec.Body.Bytes(), &results)
+		var sr1 SearchResponse
+		err = json.Unmarshal(rec.Body.Bytes(), &sr1)
 		require.NoError(t, err)
+		results := sr1.Results
 		assert.Equal(t, 1, len(results), "Should return exactly 1 result when n=1")
 	})
 
 	// Test with n=0 or invalid (should use default limit of 100)
 	t.Run("SearchWithInvalidLimit", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/search/simple?q=测试&n=0", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/search/bm25?q=测试&n=0", nil)
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
+		c.SetPathValues([]echo.PathValue{{Name: "model_id", Value: "bm25"}})
 
-		err := controller.SimpleSearch(c)
+		err := controller.Search(c)
 		require.NoError(t, err)
 		assert.Equal(t, http.StatusOK, rec.Code)
 
-		var results []SearchResultItem
-		err = json.Unmarshal(rec.Body.Bytes(), &results)
+		var sr2 SearchResponse
+		err = json.Unmarshal(rec.Body.Bytes(), &sr2)
 		require.NoError(t, err)
-		assert.Equal(t, 10, len(results), "Should return all 10 results when n=0 (falls back to default)")
+		assert.Equal(t, 10, len(sr2.Results), "Should return all 10 results when n=0 (falls back to default)")
 	})
 
 	// Test with n=-1 (should use default limit of 100)
 	t.Run("SearchWithNegativeLimit", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/search/simple?q=测试&n=-1", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/search/bm25?q=测试&n=-1", nil)
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
+		c.SetPathValues([]echo.PathValue{{Name: "model_id", Value: "bm25"}})
 
-		err := controller.SimpleSearch(c)
+		err := controller.Search(c)
 		require.NoError(t, err)
 		assert.Equal(t, http.StatusOK, rec.Code)
 
-		var results []SearchResultItem
-		err = json.Unmarshal(rec.Body.Bytes(), &results)
+		var sr3 SearchResponse
+		err = json.Unmarshal(rec.Body.Bytes(), &sr3)
 		require.NoError(t, err)
-		assert.Equal(t, 10, len(results), "Should return all 10 results when n=-1 (falls back to default)")
+		assert.Equal(t, 10, len(sr3.Results), "Should return all 10 results when n=-1 (falls back to default)")
 	})
 
 	// Test with n=abc (invalid string, should use default limit)
 	t.Run("SearchWithNonNumericLimit", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/search/simple?q=测试&n=abc", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/search/bm25?q=测试&n=abc", nil)
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
+		c.SetPathValues([]echo.PathValue{{Name: "model_id", Value: "bm25"}})
 
-		err := controller.SimpleSearch(c)
+		err := controller.Search(c)
 		require.NoError(t, err)
 		assert.Equal(t, http.StatusOK, rec.Code)
 
-		var results []SearchResultItem
-		err = json.Unmarshal(rec.Body.Bytes(), &results)
+		var sr4 SearchResponse
+		err = json.Unmarshal(rec.Body.Bytes(), &sr4)
 		require.NoError(t, err)
-		assert.Equal(t, 10, len(results), "Should return all 10 results when n=abc (falls back to default)")
+		assert.Equal(t, 10, len(sr4.Results), "Should return all 10 results when n=abc (falls back to default)")
 	})
 
 	// Test with very large n (should return all available results)
 	t.Run("SearchWithLargeLimit", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/search/simple?q=测试&n=1000", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/search/bm25?q=测试&n=1000", nil)
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
+		c.SetPathValues([]echo.PathValue{{Name: "model_id", Value: "bm25"}})
 
-		err := controller.SimpleSearch(c)
+		err := controller.Search(c)
 		require.NoError(t, err)
 		assert.Equal(t, http.StatusOK, rec.Code)
 
-		var results []SearchResultItem
-		err = json.Unmarshal(rec.Body.Bytes(), &results)
+		var sr5 SearchResponse
+		err = json.Unmarshal(rec.Body.Bytes(), &sr5)
 		require.NoError(t, err)
-		assert.Equal(t, 10, len(results), "Should return all 10 available results when n=1000")
+		assert.Equal(t, 10, len(sr5.Results), "Should return all 10 available results when n=1000")
 	})
 }
 
@@ -478,8 +489,7 @@ func TestDocumentOverwrite(t *testing.T) {
 		req = httptest.NewRequest(http.MethodGet, "/api/v1/doc/doc-overwrite-test?with_texts=true", nil)
 		rec = httptest.NewRecorder()
 		c = e.NewContext(req, rec)
-		c.SetParamNames("doc_id")
-		c.SetParamValues("doc-overwrite-test")
+		c.SetPathValues([]echo.PathValue{{Name: "doc_id", Value: "doc-overwrite-test"}})
 
 		err = controller.GetDocument(c)
 		require.NoError(t, err)
@@ -488,8 +498,8 @@ func TestDocumentOverwrite(t *testing.T) {
 		var response map[string]interface{}
 		err = json.Unmarshal(rec.Body.Bytes(), &response)
 		require.NoError(t, err)
-		assert.Equal(t, "更新后的文档", response["Title"])
-		assert.Equal(t, "这是更新后的文档", response["Description"])
+		assert.Equal(t, "更新后的文档", response["title"])
+		assert.Equal(t, "这是更新后的文档", response["description"])
 
 		// Verify texts were updated
 		texts, exists := response["texts"]
@@ -525,8 +535,7 @@ func TestDocumentOverwrite(t *testing.T) {
 		req = httptest.NewRequest(http.MethodGet, "/api/v1/doc/doc-overwrite-test?with_texts=true", nil)
 		rec = httptest.NewRecorder()
 		c = e.NewContext(req, rec)
-		c.SetParamNames("doc_id")
-		c.SetParamValues("doc-overwrite-test")
+		c.SetPathValues([]echo.PathValue{{Name: "doc_id", Value: "doc-overwrite-test"}})
 
 		err = controller.GetDocument(c)
 		require.NoError(t, err)
@@ -571,8 +580,7 @@ func TestDocumentWithEmptyData(t *testing.T) {
 	req = httptest.NewRequest(http.MethodGet, "/api/v1/doc/doc-empty-data", nil)
 	rec = httptest.NewRecorder()
 	c = e.NewContext(req, rec)
-	c.SetParamNames("doc_id")
-	c.SetParamValues("doc-empty-data")
+	c.SetPathValues([]echo.PathValue{{Name: "doc_id", Value: "doc-empty-data"}})
 
 	err = controller.GetDocument(c)
 	require.NoError(t, err)
@@ -581,5 +589,10 @@ func TestDocumentWithEmptyData(t *testing.T) {
 	var response map[string]interface{}
 	err = json.Unmarshal(rec.Body.Bytes(), &response)
 	require.NoError(t, err)
-	assert.Equal(t, "{}", response["Data"], "Data field should default to empty JSON object")
+	// Data field should be an empty map
+	dataField, ok := response["data"]
+	require.True(t, ok, "data field should exist")
+	dataMap, ok := dataField.(map[string]interface{})
+	require.True(t, ok, "data should be a JSON object")
+	assert.Equal(t, 0, len(dataMap), "Data field should default to empty JSON object")
 }

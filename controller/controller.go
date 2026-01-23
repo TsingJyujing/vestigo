@@ -15,7 +15,7 @@ import (
 
 	"github.com/coder/hnsw"
 	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/samber/lo"
 	"github.com/sirupsen/logrus"
 	"github.com/tsingjyujing/vestigo/controller/dao"
@@ -93,29 +93,29 @@ func (c *Controller) Close() error {
 }
 
 // handleSQLError return http response by error return from sql
-func handleSQLError(echoCtx echo.Context, err error) error {
+func handleSQLError(echoCtx *echo.Context, err error) error {
 	if err.Error() == RowNotFoundMessage {
-		return echoCtx.JSON(http.StatusNotFound, map[string]string{"status": "not found"})
+		return (*echoCtx).JSON(http.StatusNotFound, map[string]string{"status": "not found"})
 	} else {
-		return echoCtx.JSON(http.StatusInternalServerError, map[string]string{"status": err.Error()})
+		return (*echoCtx).JSON(http.StatusInternalServerError, map[string]string{"status": err.Error()})
 	}
 }
 
-func handleGenericError(echoCtx echo.Context, err error, status int) error {
+func handleGenericError(echoCtx *echo.Context, err error, status int) error {
 	logger.WithError(err).WithField("status", status).Error("Error handling request")
-	return echoCtx.JSON(status, map[string]string{"status": err.Error()})
+	return (*echoCtx).JSON(status, map[string]string{"status": err.Error()})
 }
 
-func handleInternalError(echoCtx echo.Context, err error) error {
+func handleInternalError(echoCtx *echo.Context, err error) error {
 	return handleGenericError(echoCtx, err, http.StatusInternalServerError)
 }
 
-func returnJsonResponse(echoCtx echo.Context, data any, status int) error {
+func returnJsonResponse(echoCtx *echo.Context, data any, status int) error {
 	jsonString, err := json.Marshal(data)
 	if err != nil {
 		return handleInternalError(echoCtx, err)
 	}
-	return echoCtx.JSONBlob(status, jsonString)
+	return (*echoCtx).JSONBlob(status, jsonString)
 }
 
 type NewDocumentParams struct {
@@ -126,20 +126,20 @@ type NewDocumentParams struct {
 	Texts       []string               `json:"texts"`
 }
 
-func (c *Controller) NewDocument(echoCtx echo.Context) error {
-	ctx := echoCtx.Request().Context()
+func (c *Controller) NewDocument(echoCtx *echo.Context) error {
+	ctx := (*echoCtx).Request().Context()
 
 	param := NewDocumentParams{}
-	if err := echoCtx.Bind(&param); err != nil {
+	if err := (*echoCtx).Bind(&param); err != nil {
 		return handleGenericError(echoCtx, err, http.StatusBadRequest)
 	}
 
 	// Check if overwrite parameter is set
-	overwrite := echoCtx.QueryParam("overwrite")
+	overwrite := (*echoCtx).QueryParam("overwrite")
 	shouldOverwrite := overwrite == "true" || overwrite == "1"
 
 	// AI summarization enabled?
-	aiSummarize := echoCtx.QueryParam("ai_sum")
+	aiSummarize := (*echoCtx).QueryParam("ai_sum")
 	if (aiSummarize == "true" || aiSummarize == "1") && len(param.Texts) > 0 && c.summarizeModel != nil {
 		summarizedText, err := c.summarizeModel.Summarize(ctx, param.Texts)
 		if err != nil {
@@ -204,7 +204,7 @@ func (c *Controller) NewDocument(echoCtx echo.Context) error {
 		return handleSQLError(echoCtx, err)
 	}
 	logger.WithField("inserted_text_chunks", insertCount).Debug("Inserted text chunks for new document")
-	return echoCtx.JSON(http.StatusCreated, map[string]string{"status": "ok"})
+	return (*echoCtx).JSON(http.StatusCreated, map[string]string{"status": "ok"})
 }
 
 type Document struct {
@@ -219,9 +219,9 @@ type DocumentWithChunks struct {
 	Texts []dao.TextChunk `json:"texts,omitempty"`
 }
 
-func (c *Controller) GetDocument(echoCtx echo.Context) error {
-	ctx := echoCtx.Request().Context()
-	docId := echoCtx.Param("doc_id")
+func (c *Controller) GetDocument(echoCtx *echo.Context) error {
+	ctx := (*echoCtx).Request().Context()
+	docId := (*echoCtx).Param("doc_id")
 	// unquote docId
 	docId, err := url.QueryUnescape(docId)
 	if err != nil {
@@ -295,7 +295,7 @@ func (c *Controller) deleteDocumentInternal(ctx context.Context, queries *dao.Qu
 }
 
 // DeleteDocument deletes a document and all related text chunks / embeddings
-func (c *Controller) DeleteDocument(echoCtx echo.Context) error {
+func (c *Controller) DeleteDocument(echoCtx *echo.Context) error {
 	ctx := echoCtx.Request().Context()
 	docId := echoCtx.Param("doc_id")
 	_, err := utils.WithTx(
@@ -323,7 +323,7 @@ type TextChunk struct {
 	CreatedAt  int64  `json:"created_at"`
 }
 
-func (c *Controller) NewTextChunk(echoCtx echo.Context) error {
+func (c *Controller) NewTextChunk(echoCtx *echo.Context) error {
 	ctx := echoCtx.Request().Context()
 	docId := echoCtx.Param("doc_id")
 	//  validate document ID before creating text chunk
@@ -415,7 +415,7 @@ func (c *Controller) createTextChunks(ctx context.Context, docId string, tx *sql
 	return &newText, nil
 }
 
-func (c *Controller) GetTextChunk(echoCtx echo.Context) error {
+func (c *Controller) GetTextChunk(echoCtx *echo.Context) error {
 	ctx := echoCtx.Request().Context()
 	textId := echoCtx.Param("text_id")
 	row, err := c.queries.GetTextChunk(ctx, textId)
@@ -439,7 +439,7 @@ func (c *Controller) deleteTextChunkFromIndex(id string) {
 	}
 }
 
-func (c *Controller) DeleteTextChunk(echoCtx echo.Context) error {
+func (c *Controller) DeleteTextChunk(echoCtx *echo.Context) error {
 	ctx := echoCtx.Request().Context()
 	textId := echoCtx.Param("text_id")
 	_, err := utils.WithTx(
@@ -587,7 +587,7 @@ type SearchResponse struct {
 	Results []SearchResultItem `json:"results"`
 }
 
-func (c *Controller) Search(echoCtx echo.Context) error {
+func (c *Controller) Search(echoCtx *echo.Context) error {
 	ctx := echoCtx.Request().Context()
 	modelId := echoCtx.Param("model_id")
 	query := echoCtx.QueryParam("q")
@@ -620,7 +620,7 @@ func (c *Controller) Search(echoCtx echo.Context) error {
 	return returnJsonResponse(echoCtx, SearchResponse{Results: results}, http.StatusOK)
 }
 
-func (c *Controller) ListEmbeddingModels(echoCtx echo.Context) error {
+func (c *Controller) ListEmbeddingModels(echoCtx *echo.Context) error {
 	modelIds := make([]string, 0, len(c.embeddingModels))
 	for modelId := range c.embeddingModels {
 		modelIds = append(modelIds, modelId)

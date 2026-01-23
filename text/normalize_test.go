@@ -66,7 +66,7 @@ func TestCJKNormalizer_Normalize_NFKC(t *testing.T) {
 		{
 			name:    "普通ASCII文本",
 			input:   "Hello World",
-			want:    "Hello World",
+			want:    "hello world",
 			wantErr: false,
 		},
 		{
@@ -78,13 +78,13 @@ func TestCJKNormalizer_Normalize_NFKC(t *testing.T) {
 		{
 			name:    "全角字符转半角",
 			input:   "Ｈｅｌｌｏ",
-			want:    "Hello",
+			want:    "hello",
 			wantErr: false,
 		},
 		{
 			name:    "Unicode兼容字符",
 			input:   "ℌ", // U+210C (Black-letter H)
-			want:    "H",
+			want:    "h",
 			wantErr: false,
 		},
 		{
@@ -142,7 +142,7 @@ func TestCJKNormalizer_Normalize_JP2T(t *testing.T) {
 		{
 			name:    "普通文本不变",
 			input:   "Hello",
-			want:    "Hello",
+			want:    "hello",
 			wantErr: false,
 		},
 	}
@@ -188,7 +188,7 @@ func TestCJKNormalizer_Normalize_T2S(t *testing.T) {
 		{
 			name:    "混合文本",
 			input:   "Hello 繁體",
-			want:    "Hello 繁体",
+			want:    "hello 繁体",
 			wantErr: false,
 		},
 	}
@@ -228,13 +228,13 @@ func TestCJKNormalizer_Normalize_Full(t *testing.T) {
 		{
 			name:    "NFKC+JP2T+T2S组合",
 			input:   "ＨｅｌｌｏＷｏｒｌｄ",
-			want:    "HelloWorld",
+			want:    "helloworld",
 			wantErr: false,
 		},
 		{
 			name:    "复杂混合文本",
 			input:   "Hello繁體日本国検索檢索",
-			want:    "Hello繁体日本国检索检索",
+			want:    "hello繁体日本国检索检索",
 			wantErr: false,
 		},
 	}
