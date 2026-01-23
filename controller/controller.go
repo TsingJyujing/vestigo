@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -460,7 +461,7 @@ type SearchResultItem struct {
 	DocumentID  string  `json:"document_id" jsonschema:"the ID of the document"`
 	Title       string  `json:"title" jsonschema:"the title of the document"`
 	Description string  `json:"description" jsonschema:"the description of the document"`
-	Rank        float64 `json:"rank" jsonschema:"the rank score of the search result"`
+	Score       float64 `json:"score" jsonschema:"the score score of the search result"`
 }
 
 func (c *Controller) SimpleSearch(echoCtx echo.Context) error {
@@ -502,7 +503,7 @@ func (c *Controller) SimpleSearch(echoCtx echo.Context) error {
 	results := make([]SearchResultItem, 0)
 	for rows.Next() {
 		var item SearchResultItem
-		if err := rows.Scan(&item.TextChunkID, &item.Content, &item.DocumentID, &item.Title, &item.Description, &item.Rank); err != nil {
+		if err := rows.Scan(&item.TextChunkID, &item.Content, &item.DocumentID, &item.Title, &item.Description, &item.Score); err != nil {
 			return handleInternalError(echoCtx, err)
 		}
 		results = append(results, item)
@@ -511,15 +512,7 @@ func (c *Controller) SimpleSearch(echoCtx echo.Context) error {
 	if err := rows.Err(); err != nil {
 		return handleInternalError(echoCtx, err)
 	}
-
 	return echoCtx.JSON(http.StatusOK, results)
-}
-
-type ANNSearchTextChunkResult struct {
-	ID         string
-	DocumentID string
-	Content    string
-	CreatedAt  int64
 }
 
 func (c *Controller) ANNSearch(echoCtx echo.Context) error {
@@ -549,11 +542,25 @@ func (c *Controller) ANNSearch(echoCtx echo.Context) error {
 	if len(queryEmbedding) != 1 {
 		return handleGenericError(echoCtx, fmt.Errorf("embedding model returned unexpected number of embeddings: %d", len(queryEmbedding)), http.StatusInternalServerError)
 	}
-	ids := lo.Map(idx.Search(queryEmbedding[0], nDoc), func(item hnsw.Node[string], index int) any {
+	searchResult := idx.SearchWithDistance(queryEmbedding[0], nDoc)
+	ids := lo.Map(searchResult, func(item hnsw.SearchResult[string], index int) any {
 		return item.Key
 	})
+	distanceMap := make(map[string]float32)
+	for _, item := range searchResult {
+		distanceMap[item.Key] = item.Distance
+	}
 	sqlStat := fmt.Sprintf(
-		"SELECT * FROM text_chunk WHERE id IN (%s)", strings.Join(
+		`SELECT 
+				tc.id,
+				tc.content,
+				tc.document_id,
+				d.title,
+				d.description
+			FROM text_chunk tc
+			JOIN document d ON d.id = tc.document_id
+			WHERE tc.id IN (%s)
+			`, strings.Join(
 			lo.Map(ids, func(item any, index int) string {
 				return "?"
 			}),
@@ -570,15 +577,18 @@ func (c *Controller) ANNSearch(echoCtx echo.Context) error {
 			logger.WithError(err).Error("Failed to close rows")
 		}
 	}(rows)
-
-	results := make([]dao.TextChunk, 0) // TODO add score to result, remove unnecessary fields
+	results := make([]SearchResultItem, 0)
 	for rows.Next() {
-		var item dao.TextChunk
-		if err := rows.Scan(&item.ID, &item.DocumentID, &item.Content, &item.SegContent, &item.CreatedAt); err != nil {
+		var item SearchResultItem
+		if err := rows.Scan(&item.TextChunkID, &item.Content, &item.DocumentID, &item.Title, &item.Description); err != nil {
 			return handleInternalError(echoCtx, err)
 		}
+		item.Score = -float64(distanceMap[item.TextChunkID])
 		results = append(results, item)
 	}
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].Score > results[j].Score
+	})
 	if err := rows.Err(); err != nil {
 		return handleInternalError(echoCtx, err)
 	}
