@@ -28,3 +28,5 @@ db.sqlite
 /.idea
 /build
 /dev
+# Added by goreleaser init:
+dist/
