@@ -5,9 +5,13 @@ generate_sql:
 start_server: generate_sql
 	go run main.go server
 
-build-binary: generate_sql
-	mkdir -p "build"
-	go build -o build/vestigo main.go
-
-format:
+format: generate_sql
 	gofumpt -l -w .
+
+build-binary: format
+	mkdir -p "build"
+	GOOS=windows GOARCH=amd64 go build -o build/vestigo.exe main.go
+	ls -alh build/
+
+test: format
+	go test -v ./...
