@@ -10,7 +10,7 @@ format: generate_sql
 
 build-binary: format
 	mkdir -p "build"
-	GOOS=windows GOARCH=amd64 go build -o build/vestigo.exe main.go
+	go build -o build/vestigo main.go
 	ls -alh build/
 
 test: format

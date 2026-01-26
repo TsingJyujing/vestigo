@@ -12,9 +12,18 @@ embedding_models:
       model: "qwen3-embedding:0.6b"
       dimensions: 512
       endpoint: "http://localhost:11434"
-summarization_model:
-  id: "ollama-qwen3-8b"
-  type: "ollama"
-  config:
-    model: "qwen3:8b"
-    endpoint: "http://localhost:11434"
+generation_models:
+  - id: "copilot-summarize"
+    type: "openai"
+    config:
+      model: "gpt-4o"
+      endpoint: "http://127.0.0.1:30021/v1"
+      token: "copilotbridge"
+  - id: "copilot-keywords"
+    type: "openai"
+    config:
+      model: "gpt-4o"
+      endpoint: "http://127.0.0.1:30021/v1"
+      token: "copilotbridge"
+      system_prompt: |
+        You are a helpful assistant to extract keywords from the wiki page by give title and content in English, Chinese and Japanese. Provide the keywords as a space-separated list.

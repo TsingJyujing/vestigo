@@ -44,10 +44,10 @@ type Controller struct {
 	normalizer       text.Normalizer
 	embeddingModels  map[string]models.BaseEmbeddingModel
 	embeddingIndexes map[string]*hnsw.SavedGraph[string]
-	summarizeModel   models.SummarizationModel
+	generationModels map[string]models.GenerationModel
 }
 
-func NewController(db *sql.DB, embeddingModels map[string]models.BaseEmbeddingModel, embeddingSavePath string, summarizeModel models.SummarizationModel) (*Controller, error) {
+func NewController(db *sql.DB, embeddingModels map[string]models.BaseEmbeddingModel, embeddingSavePath string, generationModels map[string]models.GenerationModel) (*Controller, error) {
 	tokenizer, err := text.NewGSETokenizer(true)
 	if err != nil {
 		return nil, err
@@ -73,7 +73,7 @@ func NewController(db *sql.DB, embeddingModels map[string]models.BaseEmbeddingMo
 		normalizer:       normalizer,
 		embeddingModels:  embeddingModels,
 		embeddingIndexes: embeddingIndexes,
-		summarizeModel:   summarizeModel,
+		generationModels: generationModels,
 	}, nil
 }
 
@@ -138,15 +138,24 @@ func (c *Controller) NewDocument(echoCtx *echo.Context) error {
 	overwrite := (*echoCtx).QueryParam("overwrite")
 	shouldOverwrite := overwrite == "true" || overwrite == "1"
 
-	// AI summarization enabled?
-	aiSummarize := (*echoCtx).QueryParam("ai_sum")
-	if (aiSummarize == "true" || aiSummarize == "1") && len(param.Texts) > 0 && c.summarizeModel != nil {
-		summarizedText, err := c.summarizeModel.Summarize(ctx, param.Texts)
-		if err != nil {
-			logger.WithError(err).Error("failed to summarize document texts")
-		} else {
-			param.Texts = append(param.Texts, summarizedText)
-			logger.WithField("texts", summarizedText).Debugf("summarized document texts")
+	// AI generation enabled?
+	aiGen := (*echoCtx).QueryParam("ai_gen")
+	aiGenerateEnabled := (aiGen == "true" || aiGen == "1")
+
+	// If enabled, summarize the texts and append to texts
+	if aiGenerateEnabled && len(param.Texts) > 0 {
+		generatedTexts := make([]string, 0)
+		for modelId, model := range c.generationModels {
+			generatedText, err := model.Generate(ctx, param.Texts)
+			if err != nil {
+				logger.WithError(err).WithField("model", modelId).Error("failed to generate text from document")
+			} else {
+				generatedTexts = append(generatedTexts, generatedText)
+				logger.WithField("texts", generatedText).WithField("model", modelId).Debug("generated text")
+			}
+		}
+		if len(generatedTexts) > 0 {
+			param.Texts = append(param.Texts, generatedTexts...)
 		}
 	}
 

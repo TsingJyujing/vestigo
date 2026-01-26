@@ -8,10 +8,10 @@ import (
 )
 
 type Envelope struct {
-	Server             Server              `yaml:"server"`
-	EmbeddingSavePath  string              `yaml:"embedding_save_path"`
-	EmbeddingModels    []EmbeddingModel    `yaml:"embedding_models"`
-	SummarizationModel *SummarizationModel `yaml:"summarization_model"`
+	Server            Server            `yaml:"server"`
+	EmbeddingSavePath string            `yaml:"embedding_save_path"`
+	EmbeddingModels   []EmbeddingModel  `yaml:"embedding_models"`
+	GenerationModels  []GenerationModel `yaml:"generation_models"`
 }
 type Server struct {
 	Address  string   `yaml:"address"`
@@ -25,7 +25,7 @@ type EmbeddingModel struct {
 	Config map[string]interface{} `yaml:"config"`
 }
 
-type SummarizationModel struct {
+type GenerationModel struct {
 	ID     string                 `yaml:"id"`
 	Type   string                 `yaml:"type"`
 	Config map[string]interface{} `yaml:"config"`

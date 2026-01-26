@@ -82,17 +82,21 @@ var serverCommand = &cobra.Command{
 			logger.Infof("Loaded embedding model %s successfully", modelConfig.ID)
 		}
 
-		var summarizationModel models.SummarizationModel
-		if config.SummarizationModel != nil {
-			summarizationModel, err = models.NewSummarizationModel(config.SummarizationModel.Type, config.SummarizationModel.Config)
-			if err != nil {
-				logger.WithError(err).WithField("config", config.SummarizationModel).Fatalf("Failed to load summarization model: %s", config.SummarizationModel.ID)
+		generationModels := make(map[string]models.GenerationModel)
+		if len(config.GenerationModels) > 0 {
+			for _, modelConfig := range config.GenerationModels {
+				model, err := models.NewGenerationModel(modelConfig.Type, modelConfig.Config)
+				if err != nil {
+					logger.WithError(err).WithField("config", modelConfig).Fatalf("Failed to load generation model: %s", modelConfig.ID)
+				}
+				if generationModels[modelConfig.ID] != nil {
+					logger.Fatalf("Duplicate generation model ID: %s", modelConfig.ID)
+				}
+				generationModels[modelConfig.ID] = model
+				logger.Infof("Loaded generation model %s successfully", modelConfig.ID)
 			}
-			logger.Infof("Loaded summarization model %s successfully", config.SummarizationModel.ID)
-		} else {
-			logger.Info("No summarization model configured")
 		}
-		c, err := controller.NewController(db, embeddingModels, viperInstance.GetString("embedding_save_path"), summarizationModel)
+		c, err := controller.NewController(db, embeddingModels, viperInstance.GetString("embedding_save_path"), generationModels)
 		if err != nil {
 			logger.WithError(err).Fatal("Failed to create controller")
 		}

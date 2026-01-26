@@ -10,6 +10,7 @@ require (
 	github.com/labstack/echo/v5 v5.0.0
 	github.com/modelcontextprotocol/go-sdk v1.2.0
 	github.com/ollama/ollama v0.14.3
+	github.com/openai/openai-go/v3 v3.16.0
 	github.com/pemistahl/lingua-go v1.4.0
 	github.com/samber/lo v1.52.0
 	github.com/sirupsen/logrus v1.9.4
@@ -53,6 +54,10 @@ require (
 	github.com/spf13/cast v1.10.0 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
+	github.com/tidwall/gjson v1.18.0 // indirect
+	github.com/tidwall/match v1.1.1 // indirect
+	github.com/tidwall/pretty v1.2.1 // indirect
+	github.com/tidwall/sjson v1.2.5 // indirect
 	github.com/vcaesar/cedar v0.20.2 // indirect
 	github.com/viterin/partial v1.1.0 // indirect
 	github.com/viterin/vek v0.4.3 // indirect
