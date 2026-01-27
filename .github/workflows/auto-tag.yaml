@@ -3,6 +3,10 @@ name: Auto Create Git Tag
 on:
   push:
     branches: [ master ]
+
+permissions:
+  contents: write
+
 jobs:
   create-git-tag:
     runs-on: ubuntu-latest
