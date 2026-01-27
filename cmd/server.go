@@ -37,16 +37,23 @@ func readConfig() (*viper.Viper, *config.Envelope) {
 	viperInstance.AddConfigPath("./config")
 	viperInstance.SetEnvPrefix("VESTIGO")
 	viperInstance.AutomaticEnv()
+	// Default values
+	viperInstance.SetDefault("server.address", ":8080")
+	viperInstance.SetDefault("server.database", "db.sqlite")
+	viperInstance.SetDefault("embedding_save_path", "./data/embed/")
+	// Read config file
+	if configFile != "" {
+		viperInstance.SetConfigFile(configFile)
+	}
 	err := viperInstance.ReadInConfig()
 	if err != nil {
 		logger.WithError(err).Fatal("fatal error config file")
 	}
-	logger.Infof("Using viperInstance file: %s", viperInstance.ConfigFileUsed())
+	currentConfigFile := viperInstance.ConfigFileUsed()
+
+	logger.Infof("Using config file: %s", currentConfigFile)
 	// Set default values
-	viperInstance.SetDefault("server.address", ":8080")
-	viperInstance.SetDefault("server.database", "db.sqlite")
-	viperInstance.SetDefault("embedding_save_path", "./data/embed/")
-	envelope, err := config.LoadConfigFromFile(viperInstance.ConfigFileUsed())
+	envelope, err := config.LoadConfigFromFile(currentConfigFile)
 	if err != nil {
 		logger.WithError(err).Fatal("Failed to parse configuration")
 	}

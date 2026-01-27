@@ -1,0 +1,4 @@
+# Minimal Configuration for Application
+server:
+  address: ":8080"
+  database: "data/db.sqlite"
