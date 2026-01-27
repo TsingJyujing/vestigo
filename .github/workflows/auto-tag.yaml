@@ -8,15 +8,5 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - run: |
-          git_tag_commit=$(git rev-parse --verify --quiet refs/tags/$(cat version.txt))
-          if [ -n "$git_tag_commit" ]; then
-              echo "Tag $(cat version.txt) already exists. Skipping tag creation."
-          else
-              echo "Creating and pushing tag $(cat version.txt)."
-              git tag $(cat version.txt)
-              git push origin $(cat version.txt)
-          fi
-          
-    
-
+      - name: "create and push git tag"
+        run: bash .github/scripts/auto-tag.sh
