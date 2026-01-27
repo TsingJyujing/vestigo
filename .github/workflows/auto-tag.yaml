@@ -4,12 +4,24 @@ on:
   push:
     branches: [ master ]
 
+permissions:
+  contents: write
+
 jobs:
   create-git-tag:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
       - name: "create and push git tag"
-        run: bash .github/scripts/auto-tag.sh
-        env:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          #!/bin/bash
+          version=$(cat version.txt)
+          remote_tag_exists=$(git ls-remote --tags origin | grep "refs/tags/$version" | wc -l)
+          if [ $remote_tag_exists -gt 0 ]; then
+            echo "Tag $version already exists. Skipping tag creation."
+          else
+            echo "Creating and pushing tag $version."
+            git tag $version
+            git push origin $version
+          fi
+
