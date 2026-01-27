@@ -1,7 +1,7 @@
 #!/bin/bash
 version=$(cat version.txt)
-git_tag_commit=$(git rev-parse --verify --quiet refs/tags/$version)
-if [ -n "$git_tag_commit" ]; then
+remote_tag_exists=$(git ls-remote --tags origin | grep "refs/tags/$version" | wc -l)
+if [ $remote_tag_exists -gt 0 ]; then
   echo "Tag $version already exists. Skipping tag creation."
 else
   echo "Creating and pushing tag $version."
