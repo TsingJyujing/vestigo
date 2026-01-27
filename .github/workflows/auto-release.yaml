@@ -1,5 +1,6 @@
 # This GitHub Actions workflow automatically creates and pushes a Git tag if it does not exist.
-name: Auto Create Git Tag
+# If a new tag is created, it sets up Go and runs GoReleaser to create a new release.
+name: Auto Release
 on:
   push:
     branches: [ master ]
@@ -8,7 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  create-git-tag:
+  release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -19,9 +20,24 @@ jobs:
           remote_tag_exists=$(git ls-remote --tags origin | grep "refs/tags/$version" | wc -l)
           if [ $remote_tag_exists -gt 0 ]; then
             echo "Tag $version already exists. Skipping tag creation."
+            echo "RELEASE_REQUIRED=0" >> $GITHUB_ENV
           else
             echo "Creating and pushing tag $version."
             git tag $version
             git push origin $version
+            echo "RELEASE_REQUIRED=1" >> $GITHUB_ENV
           fi
-
+      - name: "Set up Go"
+        uses: actions/setup-go@v5
+        if: ${{ env.RELEASE_REQUIRED == '1' }}
+        with:
+          go-version: 1.25.4
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        if: ${{ env.RELEASE_REQUIRED == '1' }}
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
