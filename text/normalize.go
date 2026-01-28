@@ -3,9 +3,8 @@ package text
 import (
 	"strings"
 
+	"github.com/longbridgeapp/opencc"
 	"golang.org/x/text/unicode/norm"
-
-	"github.com/teamlint/opencc"
 )
 
 type Normalizer interface {
@@ -26,7 +25,7 @@ type CJKNormalizer struct {
 func NewCJKNormalizer(useJp2t, useT2s bool) (Normalizer, error) {
 	var jp2t, t2s *opencc.OpenCC = nil, nil
 	var err error
-	if useJp2t {
+	if useJp2t { // TODO jp2t is not valid yet
 		jp2t, err = opencc.New("jp2t") // JP new Kanji -> Traditional Chinese Kanji / JP old Kanji
 		if err != nil {
 			return nil, err

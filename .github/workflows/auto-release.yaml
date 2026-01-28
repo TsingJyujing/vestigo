@@ -29,9 +29,9 @@ jobs:
           fi
       - name: "Set up Go"
         uses: actions/setup-go@v5
-        if: ${{ env.RELEASE_REQUIRED == '1' }}
         with:
           go-version: 1.25.4
+      - run: go test ./...
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         if: ${{ env.RELEASE_REQUIRED == '1' }}

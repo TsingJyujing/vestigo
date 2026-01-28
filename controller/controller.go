@@ -52,7 +52,7 @@ func NewController(db *sql.DB, embeddingModels map[string]models.BaseEmbeddingMo
 	if err != nil {
 		return nil, err
 	}
-	normalizer, err := text.NewCJKNormalizer(true, true)
+	normalizer, err := text.NewCJKNormalizer(false, true) // TODO make configurable
 	if err != nil {
 		return nil, err
 	}
