@@ -180,5 +180,4 @@ func NewServerCommand() *cobra.Command {
 	}
 	serverCmd.Flags().StringP("config", "c", "", "Path to configuration file")
 	return serverCmd
-
 }

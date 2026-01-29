@@ -190,7 +190,7 @@ type GetDocumentOutput struct {
 }
 
 func (v VestigoMCP) GetDocument(ctx context.Context, req *mcp.CallToolRequest, input GetDocumentInput) (*mcp.CallToolResult, GetDocumentOutput, error) {
-	getDocUrl, err := v.getUrl("/api/v1/doc/"+input.DocumentID, map[string]string{"with_texts": "true"})
+	getDocUrl, err := v.getUrl("/api/v1/doc/"+url.QueryEscape(input.DocumentID), map[string]string{"with_texts": "true"})
 	if err != nil {
 		return nil, GetDocumentOutput{
 			CommonOutput: CommonOutput{
