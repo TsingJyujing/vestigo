@@ -12,8 +12,15 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - name: "create and push git tag"
+      - name: "Checkout code"
+        uses: actions/checkout@v3
+      - name: "Set up Go"
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.25.4
+      - name: "Run tests"
+        run: go test ./...
+      - name: "Create and push git tag"
         run: |
           #!/bin/bash
           version=$(cat version.txt)
@@ -27,12 +34,7 @@ jobs:
             git push origin $version
             echo "RELEASE_REQUIRED=1" >> $GITHUB_ENV
           fi
-      - name: "Set up Go"
-        uses: actions/setup-go@v5
-        with:
-          go-version: 1.25.4
-      - run: go test ./...
-      - name: Run GoReleaser
+      - name: "Run GoReleaser"
         uses: goreleaser/goreleaser-action@v6
         if: ${{ env.RELEASE_REQUIRED == '1' }}
         with:
