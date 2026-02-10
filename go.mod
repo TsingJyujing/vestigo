@@ -7,7 +7,7 @@ require (
 	github.com/go-ego/gse v1.0.0
 	github.com/google/uuid v1.6.0
 	github.com/labstack/echo-contrib v0.50.0
-	github.com/labstack/echo/v5 v5.0.0
+	github.com/labstack/echo/v5 v5.0.3
 	github.com/longbridgeapp/opencc v0.3.13
 	github.com/modelcontextprotocol/go-sdk v1.2.0
 	github.com/ollama/ollama v0.15.2
