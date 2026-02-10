@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -38,13 +39,14 @@ const (
 var logger = logrus.New()
 
 type Controller struct {
-	db               *sql.DB
-	queries          dao.Queries
-	tokenizer        text.Tokenizer
-	normalizer       text.Normalizer
-	embeddingModels  map[string]models.BaseEmbeddingModel
-	embeddingIndexes map[string]*hnsw.SavedGraph[string]
-	generationModels map[string]models.GenerationModel
+	db                *sql.DB
+	queries           dao.Queries
+	tokenizer         text.Tokenizer
+	normalizer        text.Normalizer
+	embeddingModels   map[string]models.BaseEmbeddingModel
+	embeddingIndexes  map[string]*hnsw.SavedGraph[string]
+	generationModels  map[string]models.GenerationModel
+	embeddingSavePath string
 }
 
 func NewController(db *sql.DB, embeddingModels map[string]models.BaseEmbeddingModel, embeddingSavePath string, generationModels map[string]models.GenerationModel) (*Controller, error) {
@@ -57,24 +59,140 @@ func NewController(db *sql.DB, embeddingModels map[string]models.BaseEmbeddingMo
 		return nil, err
 	}
 	embeddingIndexes := make(map[string]*hnsw.SavedGraph[string])
+	controller := &Controller{
+		queries:           *dao.New(db),
+		db:                db,
+		tokenizer:         tokenizer,
+		normalizer:        normalizer,
+		embeddingModels:   embeddingModels,
+		generationModels:  generationModels,
+		embeddingSavePath: embeddingSavePath,
+	}
 	for modeName := range embeddingModels {
-		// TODO check embedding/...
-		graph, err := hnsw.LoadSavedGraph[string](filepath.Join(embeddingSavePath, fmt.Sprintf("%s.embed", modeName)))
-		// TODO Set parameters, cosine/M/...
+		if graph, err := controller.loadEmbeddingModel(context.Background(), modeName); err != nil {
+			return nil, fmt.Errorf("failed to load embedding model %s: %w", modeName, err)
+		} else {
+			embeddingIndexes[modeName] = graph
+		}
+	}
+	controller.embeddingIndexes = embeddingIndexes
+	return controller, nil
+}
+
+func (c *Controller) getEmbeddingIndexPath(modelId string) string {
+	return filepath.Join(c.embeddingSavePath, fmt.Sprintf("%s.hnsw", modelId))
+}
+
+func (c *Controller) loadEmbeddingModel(ctx context.Context, modelId string) (*hnsw.SavedGraph[string], error) {
+	missingEmbeddingCount, err := c.fixMissingEmbeddings(ctx, modelId)
+	if err != nil {
+		return nil, err // failed to fix missing embeddings
+	}
+	if missingEmbeddingCount > 0 {
+		logger.Infof("fixed %d missing embeddings for model %s", missingEmbeddingCount, modelId)
+		// remove existing index file
+		if err := os.Remove(c.getEmbeddingIndexPath(modelId)); err != nil {
+			logger.WithError(err).Warnf("Failed to remove existing embedding index file for model %s", modelId)
+		}
+		// rebuild embedding model
+		graph, err := hnsw.LoadSavedGraph[string](c.getEmbeddingIndexPath(modelId))
 		if err != nil {
 			return nil, err
 		}
-		embeddingIndexes[modeName] = graph
+		// Add all embeddings
+		logger.Infof("rebuilding embedding index for model %s", modelId)
+		rows, err := c.queries.GetAllEmbeddingsByModelID(ctx, modelId)
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			graph.Add(hnsw.Node[string]{
+				Key:   row.TextChunkID,
+				Value: utils.ConvertBytesToFloat32Array(row.Vector),
+			})
+		}
+		return graph, nil
+	} else { // no missing embeddings
+		graph, err := hnsw.LoadSavedGraph[string](c.getEmbeddingIndexPath(modelId))
+		if err != nil {
+			return nil, err
+		}
+		return graph, nil
 	}
-	return &Controller{
-		queries:          *dao.New(db),
-		db:               db,
-		tokenizer:        tokenizer,
-		normalizer:       normalizer,
-		embeddingModels:  embeddingModels,
-		embeddingIndexes: embeddingIndexes,
-		generationModels: generationModels,
-	}, nil
+}
+
+func (c *Controller) fixMissingEmbeddings(ctx context.Context, modelId string) (int, error) {
+	bufferSize := 100 // TODO make configurable
+	model, ok := c.embeddingModels[modelId]
+	if !ok {
+		return 0, fmt.Errorf("embedding model %s not found", modelId)
+	}
+	textChunks, err := dao.New(c.db).ListTextChunkWithoutEmbeddingsByModelId(ctx, modelId)
+	if err != nil {
+		return 0, err
+	}
+	buffer := make([]dao.ListTextChunkWithoutEmbeddingsByModelIdRow, 0, bufferSize)
+	emitBuffer := func() (int, error) {
+		embeddings, err := model.Embed(ctx, lo.Map(buffer, func(item dao.ListTextChunkWithoutEmbeddingsByModelIdRow, index int) string {
+			return item.Content
+		}))
+		if err != nil {
+			return 0, err
+		}
+		if len(embeddings) != len(buffer) {
+			return 0, fmt.Errorf("embedding model returned unexpected number of embeddings: %d", len(embeddings))
+		}
+		// write to db and index
+		_, err = utils.WithTx(
+			ctx,
+			c.db,
+			nil,
+			func(tx *sql.Tx) (any, error) {
+				queries := dao.New(tx)
+				for i, item := range buffer {
+					if err := queries.NewTextEmbedding(ctx, dao.NewTextEmbeddingParams{
+						TextChunkID: item.ID,
+						ModelID:     modelId,
+						Vector:      utils.ConvertFloat32ArrayToBytes(embeddings[i]),
+					}); err != nil {
+						return nil, err
+					}
+				}
+				return nil, nil
+			},
+		)
+		if err != nil {
+			return 0, err
+		}
+		logger.Debugf("submitted batch of %d embeddings for model %s", len(buffer), modelId)
+		return len(buffer), nil
+	}
+	emittedCount := 0
+	failedCount := 0
+	for _, textChunk := range textChunks {
+		buffer = append(buffer, textChunk)
+		if len(buffer) >= bufferSize {
+			if l, err := emitBuffer(); err != nil {
+				logger.WithError(err).Error("failed to generate embeddings in batch")
+				failedCount += len(buffer)
+			} else {
+				emittedCount += l
+			}
+			clear(buffer)
+		}
+	}
+	if len(buffer) > 0 {
+		if l, err := emitBuffer(); err != nil {
+			logger.WithError(err).Error("failed to generate embeddings in batch")
+			failedCount += len(buffer)
+		} else {
+			emittedCount += l
+		}
+	}
+	if failedCount > 0 {
+		return emittedCount, fmt.Errorf("failed to generate %d embeddings for model %s", failedCount, modelId)
+	}
+	return emittedCount, nil
 }
 
 // Close closes all resources held by the controller

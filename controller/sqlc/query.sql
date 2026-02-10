@@ -73,4 +73,14 @@ SELECT id
 FROM text_chunk
 WHERE document_id = ?;
 
--- name: List
+-- name: ListTextChunkWithoutEmbeddingsByModelId :many
+SELECT id, content
+FROM text_chunk tc
+         LEFT JOIN text_embedding te ON tc.id = te.text_chunk_id AND te.model_id = ?
+WHERE te.text_chunk_id IS NULL;
+
+-- name: GetAllEmbeddingsByModelID :many
+SELECT text_chunk_id, vector
+FROM text_embedding
+WHERE model_id = ?;
+

@@ -90,6 +90,40 @@ func (q *Queries) DeleteTextEmbeddingsByTextChunkID(ctx context.Context, textChu
 	return err
 }
 
+const getAllEmbeddingsByModelID = `-- name: GetAllEmbeddingsByModelID :many
+SELECT text_chunk_id, vector
+FROM text_embedding
+WHERE model_id = ?
+`
+
+type GetAllEmbeddingsByModelIDRow struct {
+	TextChunkID string
+	Vector      []byte
+}
+
+func (q *Queries) GetAllEmbeddingsByModelID(ctx context.Context, modelID string) ([]GetAllEmbeddingsByModelIDRow, error) {
+	rows, err := q.db.QueryContext(ctx, getAllEmbeddingsByModelID, modelID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetAllEmbeddingsByModelIDRow
+	for rows.Next() {
+		var i GetAllEmbeddingsByModelIDRow
+		if err := rows.Scan(&i.TextChunkID, &i.Vector); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getDocument = `-- name: GetDocument :one
 SELECT id, title, description, data, created_at
 FROM document
@@ -162,6 +196,41 @@ func (q *Queries) ListTextChunkIdByDocumentID(ctx context.Context, documentID st
 			return nil, err
 		}
 		items = append(items, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTextChunkWithoutEmbeddingsByModelId = `-- name: ListTextChunkWithoutEmbeddingsByModelId :many
+SELECT id, content
+FROM text_chunk tc
+         LEFT JOIN text_embedding te ON tc.id = te.text_chunk_id AND te.model_id = ?
+WHERE te.text_chunk_id IS NULL
+`
+
+type ListTextChunkWithoutEmbeddingsByModelIdRow struct {
+	ID      string
+	Content string
+}
+
+func (q *Queries) ListTextChunkWithoutEmbeddingsByModelId(ctx context.Context, modelID string) ([]ListTextChunkWithoutEmbeddingsByModelIdRow, error) {
+	rows, err := q.db.QueryContext(ctx, listTextChunkWithoutEmbeddingsByModelId, modelID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListTextChunkWithoutEmbeddingsByModelIdRow
+	for rows.Next() {
+		var i ListTextChunkWithoutEmbeddingsByModelIdRow
+		if err := rows.Scan(&i.ID, &i.Content); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err
