@@ -71,6 +71,7 @@ func NewServerCommand() *cobra.Command {
 			if err != nil {
 				logger.WithError(err).Fatal("Failed to open database")
 			}
+			db.SetMaxOpenConns(1)
 			// create tables
 			if _, err := db.ExecContext(goCtx, controller.GetDDL()); err != nil {
 				logger.WithError(err).Fatal("Failed to create tables")

@@ -215,6 +215,7 @@ func handleSQLError(echoCtx *echo.Context, err error) error {
 	if err.Error() == RowNotFoundMessage {
 		return (*echoCtx).JSON(http.StatusNotFound, map[string]string{"status": "not found"})
 	} else {
+		logger.WithError(err).Error("Unknown SQL error")
 		return (*echoCtx).JSON(http.StatusInternalServerError, map[string]string{"status": err.Error()})
 	}
 }
@@ -258,7 +259,7 @@ func (c *Controller) NewDocument(echoCtx *echo.Context) error {
 
 	// AI generation enabled?
 	aiGen := (*echoCtx).QueryParam("ai_gen")
-	aiGenerateEnabled := (aiGen == "true" || aiGen == "1")
+	aiGenerateEnabled := aiGen == "true" || aiGen == "1"
 
 	// If enabled, summarize the texts and append to texts
 	if aiGenerateEnabled && len(param.Texts) > 0 {
@@ -318,7 +319,7 @@ func (c *Controller) NewDocument(echoCtx *echo.Context) error {
 			}
 			textChunks := make([]*dao.TextChunk, 0, len(param.Texts))
 			for _, t := range param.Texts {
-				tc, err := c.createTextChunks(ctx, param.ID, tx, t)
+				tc, err := c.createTextChunks(ctx, param.ID, queries, t)
 				if err != nil {
 					return 0, err
 				}
@@ -468,7 +469,7 @@ func (c *Controller) NewTextChunk(echoCtx *echo.Context) error {
 		c.db,
 		nil,
 		func(tx *sql.Tx) (*dao.TextChunk, error) {
-			return c.createTextChunks(ctx, docId, tx, param.Content)
+			return c.createTextChunks(ctx, docId, dao.New(tx), param.Content)
 		},
 	)
 	if err != nil {
@@ -483,7 +484,7 @@ func (c *Controller) NewTextChunk(echoCtx *echo.Context) error {
 	})
 }
 
-func (c *Controller) createTextChunks(ctx context.Context, docId string, tx *sql.Tx, text string) (*dao.TextChunk, error) {
+func (c *Controller) createTextChunks(ctx context.Context, docId string, queries *dao.Queries, text string) (*dao.TextChunk, error) {
 	newUUID, uuidErr := uuid.NewRandom()
 	if uuidErr != nil {
 		return nil, uuidErr
@@ -505,7 +506,6 @@ func (c *Controller) createTextChunks(ctx context.Context, docId string, tx *sql
 		ID:         newUUID.String(),
 		SegContent: segContent,
 	}
-	queries := dao.New(tx)
 	newText, err := queries.NewTextChunk(ctx, requestParam)
 	if err != nil {
 		return nil, err
