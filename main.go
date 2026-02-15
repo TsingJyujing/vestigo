@@ -4,12 +4,12 @@ import (
 	_ "embed"
 	"fmt"
 
-	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/tsingjyujing/vestigo/cmd"
+	"github.com/tsingjyujing/vestigo/utils"
 )
 
-var logger = logrus.New()
+var logger = utils.Logger
 
 //go:embed version.txt
 var version string
@@ -27,16 +27,22 @@ func main() {
 		Use:   "vestigo",
 		Short: "Vestigo is a personal search engine",
 	}
-	rootCmd.Flags().BoolP("verbose", "v", false, "verbose output")
-	commands := []*cobra.Command{
+	for _, subCommand := range []*cobra.Command{
 		cmd.NewServerCommand(),
 		cmd.NewMcpCommand(),
 		versionCommand,
-	}
-	for _, command := range commands {
-		rootCmd.AddCommand(command)
+	} {
+		verboseOutput := false
+		subCommand.Flags().BoolVarP(&verboseOutput, "verbose", "v", false, "Enable verbose output")
+		subCommand.PersistentPreRun = func(cmd *cobra.Command, args []string) {
+			if verboseOutput {
+				utils.SetVerbose()
+				logger.Debug("Verbose output enabled")
+			}
+		}
+		rootCmd.AddCommand(subCommand)
 	}
 	if err := rootCmd.Execute(); err != nil {
-		logger.WithError(err).Fatal("Failed to execute command")
+		logger.WithError(err).Fatal("Failed to execute subCommand")
 	}
 }

@@ -18,7 +18,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
 	"github.com/samber/lo"
-	"github.com/sirupsen/logrus"
 	"github.com/tsingjyujing/vestigo/controller/dao"
 	"github.com/tsingjyujing/vestigo/models"
 	"github.com/tsingjyujing/vestigo/text"
@@ -32,11 +31,7 @@ func GetDDL() string {
 	return ddl
 }
 
-const (
-	RowNotFoundMessage = "sql: no rows in result set"
-)
-
-var logger = logrus.New()
+var logger = utils.Logger
 
 type Controller struct {
 	db                *sql.DB
@@ -49,6 +44,7 @@ type Controller struct {
 	embeddingSavePath string
 }
 
+// NewController creates a new Controller instance with the given database connection and models
 func NewController(db *sql.DB, embeddingModels map[string]models.BaseEmbeddingModel, embeddingSavePath string, generationModels map[string]models.GenerationModel) (*Controller, error) {
 	tokenizer, err := text.NewGSETokenizer(true)
 	if err != nil {
@@ -79,17 +75,32 @@ func NewController(db *sql.DB, embeddingModels map[string]models.BaseEmbeddingMo
 	return controller, nil
 }
 
+// Close closes all resources held by the controller
+func (c *Controller) Close() error {
+	for modelId, graph := range c.embeddingIndexes {
+		err := graph.Save()
+		if err != nil {
+			logger.WithError(err).Errorf("Failed to save embedding index for model %s", modelId)
+		}
+	}
+	if err := c.db.Close(); err != nil {
+		logger.WithError(err).Error("Failed to close database")
+	}
+	logger.Info("Controller resources closed successfully")
+	return nil
+}
+
 func (c *Controller) getEmbeddingIndexPath(modelId string) string {
 	return filepath.Join(c.embeddingSavePath, fmt.Sprintf("%s.hnsw", modelId))
 }
 
 func (c *Controller) loadEmbeddingModel(ctx context.Context, modelId string) (*hnsw.SavedGraph[string], error) {
-	missingEmbeddingCount, err := c.fixMissingEmbeddings(ctx, modelId)
+	missingEmbeddingCount, err := c.regenerateMissingEmbeddings(ctx, modelId)
 	if err != nil {
 		return nil, err // failed to fix missing embeddings
 	}
 	if missingEmbeddingCount > 0 {
-		logger.Infof("fixed %d missing embeddings for model %s", missingEmbeddingCount, modelId)
+		logger.Debugf("regenerate %d missing embeddings for model %s", missingEmbeddingCount, modelId)
 		// remove existing index file
 		if err := os.Remove(c.getEmbeddingIndexPath(modelId)); err != nil {
 			logger.WithError(err).Warnf("Failed to remove existing embedding index file for model %s", modelId)
@@ -119,9 +130,10 @@ func (c *Controller) loadEmbeddingModel(ctx context.Context, modelId string) (*h
 		}
 		return graph, nil
 	}
+	// TODO clean up dangling embeddings by config
 }
 
-func (c *Controller) fixMissingEmbeddings(ctx context.Context, modelId string) (int, error) {
+func (c *Controller) regenerateMissingEmbeddings(ctx context.Context, modelId string) (int, error) {
 	bufferSize := 100 // TODO make configurable
 	model, ok := c.embeddingModels[modelId]
 	if !ok {
@@ -176,9 +188,10 @@ func (c *Controller) fixMissingEmbeddings(ctx context.Context, modelId string) (
 				logger.WithError(err).Error("failed to generate embeddings in batch")
 				failedCount += len(buffer)
 			} else {
+				logger.Debugf("emitted batch of %d embeddings for model %s", l, modelId)
 				emittedCount += l
 			}
-			clear(buffer)
+			buffer = make([]dao.ListTextChunkWithoutEmbeddingsByModelIdRow, 0, bufferSize)
 		}
 	}
 	if len(buffer) > 0 {
@@ -186,6 +199,7 @@ func (c *Controller) fixMissingEmbeddings(ctx context.Context, modelId string) (
 			logger.WithError(err).Error("failed to generate embeddings in batch")
 			failedCount += len(buffer)
 		} else {
+			logger.Debugf("emitted batch of %d embeddings for model %s", l, modelId)
 			emittedCount += l
 		}
 	}
@@ -193,48 +207,6 @@ func (c *Controller) fixMissingEmbeddings(ctx context.Context, modelId string) (
 		return emittedCount, fmt.Errorf("failed to generate %d embeddings for model %s", failedCount, modelId)
 	}
 	return emittedCount, nil
-}
-
-// Close closes all resources held by the controller
-func (c *Controller) Close() error {
-	for modelId, graph := range c.embeddingIndexes {
-		err := graph.Save()
-		if err != nil {
-			logger.WithError(err).Errorf("Failed to save embedding index for model %s", modelId)
-		}
-	}
-	if err := c.db.Close(); err != nil {
-		logger.WithError(err).Error("Failed to close database")
-	}
-	logger.Info("Controller resources closed successfully")
-	return nil
-}
-
-// handleSQLError return http response by error return from sql
-func handleSQLError(echoCtx *echo.Context, err error) error {
-	if err.Error() == RowNotFoundMessage {
-		return (*echoCtx).JSON(http.StatusNotFound, map[string]string{"status": "not found"})
-	} else {
-		logger.WithError(err).Error("Unknown SQL error")
-		return (*echoCtx).JSON(http.StatusInternalServerError, map[string]string{"status": err.Error()})
-	}
-}
-
-func handleGenericError(echoCtx *echo.Context, err error, status int) error {
-	logger.WithError(err).WithField("status", status).Error("Error handling request")
-	return (*echoCtx).JSON(status, map[string]string{"status": err.Error()})
-}
-
-func handleInternalError(echoCtx *echo.Context, err error) error {
-	return handleGenericError(echoCtx, err, http.StatusInternalServerError)
-}
-
-func returnJsonResponse(echoCtx *echo.Context, data any, status int) error {
-	jsonString, err := json.Marshal(data)
-	if err != nil {
-		return handleInternalError(echoCtx, err)
-	}
-	return (*echoCtx).JSONBlob(status, jsonString)
 }
 
 type NewDocumentParams struct {
@@ -250,7 +222,7 @@ func (c *Controller) NewDocument(echoCtx *echo.Context) error {
 
 	param := NewDocumentParams{}
 	if err := (*echoCtx).Bind(&param); err != nil {
-		return handleGenericError(echoCtx, err, http.StatusBadRequest)
+		return utils.EchoHandleGenericError(echoCtx, err, http.StatusBadRequest)
 	}
 
 	// Check if overwrite parameter is set
@@ -329,7 +301,7 @@ func (c *Controller) NewDocument(echoCtx *echo.Context) error {
 		},
 	)
 	if err != nil {
-		return handleSQLError(echoCtx, err)
+		return utils.EchoHandleSQLError(echoCtx, err)
 	}
 	logger.WithField("inserted_text_chunks", insertCount).Debug("Inserted text chunks for new document")
 	return (*echoCtx).JSON(http.StatusCreated, map[string]string{"status": "ok"})
@@ -342,6 +314,7 @@ type Document struct {
 	Data        map[string]any `json:"data"`
 	CreatedAt   int64          `json:"created_at"`
 }
+
 type DocumentWithChunks struct {
 	Document
 	Texts []dao.TextChunk `json:"texts,omitempty"`
@@ -353,16 +326,16 @@ func (c *Controller) GetDocument(echoCtx *echo.Context) error {
 	// unquote docId
 	docId, err := url.QueryUnescape(docId)
 	if err != nil {
-		return handleGenericError(echoCtx, err, http.StatusBadRequest)
+		return utils.EchoHandleGenericError(echoCtx, err, http.StatusBadRequest)
 	}
 	row, err := c.queries.GetDocument(ctx, docId)
 	if err != nil {
-		return handleSQLError(echoCtx, err)
+		return utils.EchoHandleSQLError(echoCtx, err)
 	}
 	// Convert data JSON string to map
 	dataMap := make(map[string]any)
 	if err := json.Unmarshal([]byte(row.Data), &dataMap); err != nil {
-		return handleInternalError(echoCtx, err)
+		return utils.EchoHandleInternalError(echoCtx, err)
 	}
 	// Prepare document response
 	document := Document{
@@ -379,7 +352,7 @@ func (c *Controller) GetDocument(echoCtx *echo.Context) error {
 		// Fetch all text texts for this document
 		texts, err := c.queries.ListTextChunksByDocumentID(ctx, docId)
 		if err != nil {
-			return handleInternalError(echoCtx, err)
+			return utils.EchoHandleInternalError(echoCtx, err)
 		}
 
 		// Return document with chunks
@@ -387,10 +360,10 @@ func (c *Controller) GetDocument(echoCtx *echo.Context) error {
 			Document: document,
 			Texts:    texts,
 		}
-		return returnJsonResponse(echoCtx, documentWithChunks, http.StatusOK)
+		return utils.EchoJsonResponse(echoCtx, documentWithChunks, http.StatusOK)
 	}
 	// Return document without chunks
-	return returnJsonResponse(echoCtx, document, http.StatusOK)
+	return utils.EchoJsonResponse(echoCtx, document, http.StatusOK)
 }
 
 // deleteDocumentInternal deletes a document and all related text chunks / embeddings
@@ -438,7 +411,7 @@ func (c *Controller) DeleteDocument(echoCtx *echo.Context) error {
 		},
 	)
 	if err != nil {
-		return handleInternalError(echoCtx, err)
+		return utils.EchoHandleInternalError(echoCtx, err)
 	}
 	return echoCtx.JSON(http.StatusOK, map[string]string{"status": "ok"})
 }
@@ -456,13 +429,13 @@ func (c *Controller) NewTextChunk(echoCtx *echo.Context) error {
 	docId := echoCtx.Param("doc_id")
 	//  validate document ID before creating text chunk
 	if _, err := c.queries.GetDocument(ctx, docId); err != nil {
-		return handleSQLError(echoCtx, err)
+		return utils.EchoHandleSQLError(echoCtx, err)
 	}
 	param := &struct {
 		Content string `json:"content"`
 	}{}
 	if err := echoCtx.Bind(&param); err != nil {
-		return handleGenericError(echoCtx, err, http.StatusBadRequest)
+		return utils.EchoHandleGenericError(echoCtx, err, http.StatusBadRequest)
 	}
 	row, err := utils.WithTx(
 		ctx,
@@ -473,7 +446,7 @@ func (c *Controller) NewTextChunk(echoCtx *echo.Context) error {
 		},
 	)
 	if err != nil {
-		return handleSQLError(echoCtx, err)
+		return utils.EchoHandleSQLError(echoCtx, err)
 	}
 	return echoCtx.JSON(http.StatusCreated, TextChunk{
 		ID:         row.ID,
@@ -547,7 +520,7 @@ func (c *Controller) GetTextChunk(echoCtx *echo.Context) error {
 	textId := echoCtx.Param("text_id")
 	row, err := c.queries.GetTextChunk(ctx, textId)
 	if err != nil {
-		return handleSQLError(echoCtx, err)
+		return utils.EchoHandleSQLError(echoCtx, err)
 	}
 	return echoCtx.JSON(http.StatusOK, TextChunk{
 		ID:         row.ID,
@@ -592,7 +565,7 @@ func (c *Controller) DeleteTextChunk(echoCtx *echo.Context) error {
 		},
 	)
 	if err != nil {
-		return handleInternalError(echoCtx, err)
+		return utils.EchoHandleInternalError(echoCtx, err)
 	}
 	return echoCtx.JSON(http.StatusOK, map[string]string{"status": "ok"})
 }
@@ -720,7 +693,7 @@ func (c *Controller) Search(echoCtx *echo.Context) error {
 	query := echoCtx.QueryParam("q")
 	nDocParam := echoCtx.QueryParam("n")
 	if query == "" {
-		return handleGenericError(echoCtx, echo.NewHTTPError(http.StatusBadRequest, "query parameter 'q' is required"), http.StatusBadRequest)
+		return utils.EchoHandleGenericError(echoCtx, echo.NewHTTPError(http.StatusBadRequest, "query parameter 'q' is required"), http.StatusBadRequest)
 	}
 	nDoc, err := strconv.Atoi(nDocParam)
 	if err != nil || nDoc <= 0 {
@@ -730,21 +703,21 @@ func (c *Controller) Search(echoCtx *echo.Context) error {
 	if strings.ToLower(modelId) == "bm25" {
 		results, err = c.searchWithBM25(ctx, query, nDoc)
 		if err != nil {
-			return handleInternalError(echoCtx, err)
+			return utils.EchoHandleInternalError(echoCtx, err)
 		}
 	} else {
 		// Check if model exists
 		_, okModel := c.embeddingModels[modelId]
 		_, okAnnIndex := c.embeddingIndexes[modelId]
 		if !okModel || !okAnnIndex {
-			return handleGenericError(echoCtx, echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("model '%s' not found", modelId)), http.StatusBadRequest)
+			return utils.EchoHandleGenericError(echoCtx, echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("model '%s' not found", modelId)), http.StatusBadRequest)
 		}
 		results, err = c.searchWithEmbeddingModel(ctx, modelId, query, nDoc)
 		if err != nil {
-			return handleInternalError(echoCtx, err)
+			return utils.EchoHandleInternalError(echoCtx, err)
 		}
 	}
-	return returnJsonResponse(echoCtx, SearchResponse{Results: results}, http.StatusOK)
+	return utils.EchoJsonResponse(echoCtx, SearchResponse{Results: results}, http.StatusOK)
 }
 
 func (c *Controller) ListEmbeddingModels(echoCtx *echo.Context) error {

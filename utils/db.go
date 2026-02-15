@@ -3,11 +3,7 @@ package utils
 import (
 	"context"
 	"database/sql"
-
-	"github.com/sirupsen/logrus"
 )
-
-var logger = logrus.New()
 
 func WithTx[T any](
 	ctx context.Context,
@@ -25,14 +21,14 @@ func WithTx[T any](
 		if p := recover(); p != nil {
 			rollbackErr := tx.Rollback()
 			if rollbackErr != nil {
-				logger.Errorf("transaction rollback error: %v", rollbackErr)
+				Logger.Errorf("transaction rollback error: %v", rollbackErr)
 			}
 			panic(p)
 		}
 		if err != nil {
 			rollbackErr := tx.Rollback()
 			if rollbackErr != nil {
-				logger.Errorf("transaction rollback error: %v", rollbackErr)
+				Logger.Errorf("transaction rollback error: %v", rollbackErr)
 			}
 		}
 	}()
@@ -42,9 +38,9 @@ func WithTx[T any](
 		return out, err
 	}
 
-	// 只在业务成功时提交
+	// Commit the transaction
 	if cerr := tx.Commit(); cerr != nil {
-		// 这里把 Commit 错误作为最终错误
+		// Use this error instead of the original error if commit fails
 		err = cerr
 		return out, err
 	}

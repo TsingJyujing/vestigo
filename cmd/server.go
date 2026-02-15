@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
@@ -13,7 +14,6 @@ import (
 	"github.com/labstack/echo-contrib/echoprometheus"
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
-	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/tsingjyujing/vestigo/config"
@@ -23,7 +23,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-var logger = logrus.New()
+var logger = utils.Logger
 
 func readConfig(configFile string) (*viper.Viper, *config.Envelope) {
 	viperInstance := viper.New()
@@ -57,6 +57,40 @@ func readConfig(configFile string) (*viper.Viper, *config.Envelope) {
 	return viperInstance, envelope
 }
 
+func loadEmbeddingModels(configs []config.EmbeddingModel) (map[string]models.BaseEmbeddingModel, error) {
+	embeddingModels := make(map[string]models.BaseEmbeddingModel)
+	for _, modelConfig := range configs {
+		model, err := models.LoadEmbeddingModel(modelConfig.Type, modelConfig.Config)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load embedding model %s: %w", modelConfig.ID, err)
+		}
+		if embeddingModels[modelConfig.ID] != nil {
+			return nil, fmt.Errorf("duplicate embedding model: %s", modelConfig.ID)
+		}
+		embeddingModels[modelConfig.ID] = model
+		logger.Debugf("Loaded embedding model %s successfully", modelConfig.ID)
+	}
+	return embeddingModels, nil
+}
+
+func loadGenerationModels(configs []config.GenerationModel) (map[string]models.GenerationModel, error) {
+	generationModels := make(map[string]models.GenerationModel)
+	if len(configs) > 0 {
+		for _, modelConfig := range configs {
+			model, err := models.NewGenerationModel(modelConfig.Type, modelConfig.Config)
+			if err != nil {
+				return nil, fmt.Errorf("failed to load generation model %s: %w", modelConfig.ID, err)
+			}
+			if generationModels[modelConfig.ID] != nil {
+				return nil, fmt.Errorf("duplicate generation model: %s", modelConfig.ID)
+			}
+			generationModels[modelConfig.ID] = model
+			logger.Debugf("Loaded generation model %s successfully", modelConfig.ID)
+		}
+	}
+	return generationModels, nil
+}
+
 func NewServerCommand() *cobra.Command {
 	serverCmd := &cobra.Command{
 		Use:   "server",
@@ -76,32 +110,14 @@ func NewServerCommand() *cobra.Command {
 			if _, err := db.ExecContext(goCtx, controller.GetDDL()); err != nil {
 				logger.WithError(err).Fatal("Failed to create tables")
 			}
-			embeddingModels := make(map[string]models.BaseEmbeddingModel)
-			for _, modelConfig := range configStruct.EmbeddingModels {
-				model, err := models.LoadEmbeddingModel(modelConfig.Type, modelConfig.Config)
-				if err != nil {
-					logger.WithError(err).WithField("config", modelConfig).Fatalf("Failed to load embedding model: %s", modelConfig.ID)
-				}
-				if embeddingModels[modelConfig.ID] != nil {
-					logger.Fatalf("Duplicate embedding model ID: %s", modelConfig.ID)
-				}
-				embeddingModels[modelConfig.ID] = model
-				logger.Infof("Loaded embedding model %s successfully", modelConfig.ID)
+			// Load models
+			embeddingModels, err := loadEmbeddingModels(configStruct.EmbeddingModels)
+			if err != nil {
+				logger.WithError(err).Fatal("Failed to load embedding models")
 			}
-
-			generationModels := make(map[string]models.GenerationModel)
-			if len(configStruct.GenerationModels) > 0 {
-				for _, modelConfig := range configStruct.GenerationModels {
-					model, err := models.NewGenerationModel(modelConfig.Type, modelConfig.Config)
-					if err != nil {
-						logger.WithError(err).WithField("config", modelConfig).Fatalf("Failed to load generation model: %s", modelConfig.ID)
-					}
-					if generationModels[modelConfig.ID] != nil {
-						logger.Fatalf("Duplicate generation model ID: %s", modelConfig.ID)
-					}
-					generationModels[modelConfig.ID] = model
-					logger.Infof("Loaded generation model %s successfully", modelConfig.ID)
-				}
+			generationModels, err := loadGenerationModels(configStruct.GenerationModels)
+			if err != nil {
+				logger.WithError(err).Fatal("Failed to load generation models")
 			}
 			c, err := controller.NewController(db, embeddingModels, viperInstance.GetString("embedding_save_path"), generationModels)
 			if err != nil {
@@ -159,7 +175,7 @@ func NewServerCommand() *cobra.Command {
 				}
 			}()
 
-			// Wait for interrupt signal to gracefully shutdown the server with a timeout
+			// Wait for interrupt signal to gracefully shut down the server with a timeout
 			<-ctx.Done()
 			stop()
 			logger.Info("Shutting down server gracefully, press Ctrl+C again to force")

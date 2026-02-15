@@ -19,6 +19,7 @@ generation_models:
       model: "gpt-4o"
       endpoint: "http://127.0.0.1:30021/v1"
       token: "copilotbridge"
+      # system_prompt: default value is to generate summarization
   - id: "copilot-keywords"
     type: "openai"
     config:
